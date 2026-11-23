@@ -820,16 +820,11 @@ fn case_open_year(app: State<App>, year: i64) -> Result<OpenedYear, String> {
         if fresh && !has_case && before == 0 {
             return Ok(OpenedYear { case: None, fresh, created: false, typo: true, sections });
         }
-        let created = fresh && genmetric_core::records::case_for_year(conn, year)?.1;
-        let case = conn.query_row(&statement("case_current")?, rusqlite::named_params! { ":year": year },
-            |r| Ok(Case {
-                id: r.get(0)?, archive: r.get(1)?, fond: r.get(2)?, opis: r.get(3)?,
-                delo: r.get(4)?, church: r.get(5)?, village: r.get(6)?, uyezd: r.get(7)?,
-                guberniya: r.get(8)?, year: r.get(9)?, indexer: r.get(10)?,
-            }))
-            .optional()
-            .map_err(|e| e.to_string())?;
-        Ok(OpenedYear { case, fresh, created, typo: false, sections })
+        // Задача 16: смена года дело не заводит — оно появится при первой
+        // записи года (год + текущие реквизиты). Окну — текущие реквизиты с
+        // этим годом.
+        let reqs = genmetric_core::records::current_reqs(conn)?;
+        Ok(OpenedYear { case: Some(Case { year: Some(year), ..reqs }), fresh, created: false, typo: false, sections })
     })
 }
 
@@ -878,8 +873,64 @@ fn entry_save(app: State<App>, entry: EntryInput, reqs: Option<Case>) -> Result<
 
 /// Текущие реквизиты прихода — экран «Дело» (задача 16).
 #[tauri::command]
-fn case_reqs_get(app: State<App>) -> Result<Case, String> {
-    with_conn(&app, "Чтение реквизитов", genmetric_core::records::current_reqs)
+fn case_reqs_get(app: State<App>) -> Result<Option<Case>, String> {
+    // Новый приход: ни реквизитов, ни дел — None, формы ждут «Дело».
+    with_conn(&app, "Чтение реквизитов", |conn| {
+        let set = genmetric_core::parish::setting_get(conn, genmetric_core::records::CASE_REQS)?.is_some();
+        let cases: i64 = conn.query_row("SELECT count(*) FROM mk_case", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+        if !set && cases == 0 {
+            return Ok(None);
+        }
+        genmetric_core::records::current_reqs(conn).map(Some)
+    })
+}
+
+#[derive(Serialize)]
+struct CaseRow {
+    case: Case,
+    entries: i64,
+}
+
+/// Дело записи — строка её реквизитов у записи на правке (задача 16).
+#[tauri::command]
+fn entry_case(app: State<App>, id: i64) -> Result<Option<Case>, String> {
+    with_conn(&app, "Реквизиты записи", |conn| {
+        let case_id: Option<i64> = conn
+            .query_row(&statement("entry_place_in_book")?, rusqlite::named_params! { ":id": id }, |r| r.get(0))
+            .optional().map_err(|e| e.to_string())?;
+        match case_id {
+            Some(c) => genmetric_core::records::case_by_id(conn, c),
+            None => Ok(None),
+        }
+    })
+}
+
+/// Дела прихода — экран «Дело» (задача 16).
+#[tauri::command]
+fn case_list(app: State<App>) -> Result<Vec<CaseRow>, String> {
+    with_conn(&app, "Дела прихода", |conn| {
+        let mut stmt = conn.prepare(&statement("case_list")?).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| Ok(CaseRow {
+            case: Case { id: r.get(0)?, year: r.get(1)?, archive: r.get(2)?, fond: r.get(3)?, opis: r.get(4)?,
+                         delo: r.get(5)?, church: r.get(6)?, village: r.get(7)?, uyezd: r.get(8)?,
+                         guberniya: r.get(9)?, indexer: None },
+            entries: r.get(10)?,
+        })).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+/// «Исправить реквизиты» дела — у всех его записей (задача 16).
+#[tauri::command]
+fn case_fix(app: State<App>, case: Case) -> Result<(), String> {
+    with_conn_shared(&app, "Исправление реквизитов дела", |conn| {
+        let nz = |v: &Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+        conn.execute(&statement("case_fix")?, rusqlite::named_params! {
+            ":id": case.id, ":archive": nz(&case.archive), ":fond": nz(&case.fond), ":opis": nz(&case.opis),
+            ":delo": nz(&case.delo), ":church": nz(&case.church), ":village": nz(&case.village),
+            ":uyezd": nz(&case.uyezd), ":guberniya": nz(&case.guberniya),
+        }).map(|_| ()).map_err(|e| e.to_string())
+    })
 }
 
 /// «Сохранить» на «Деле»: только текущие реквизиты; набранное не меняется.
@@ -3046,6 +3097,9 @@ fn main() {
             entry_save,
             case_reqs_get,
             case_reqs_save,
+            case_list,
+            entry_case,
+            case_fix,
             entry_list,
             entry_load,
             last_clergy,

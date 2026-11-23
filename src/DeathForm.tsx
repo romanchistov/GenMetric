@@ -1,4 +1,6 @@
 import DeleteEntry from "./DeleteEntry";
+import EntryReqs, { reqsText } from "./EntryReqs";
+import type { Case } from "./CaseHeader";
 import { SAVE_KEY } from "./keys";
 import { useEffect, useRef, useState } from "react";
 import { ScanLink, useEntryScan, useScan } from "./scan";
@@ -212,6 +214,10 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
   const [clergy1, clergy2, clergy3] = clergyState.people;
 
   const [editingId, setEditingId] = useState<number | null>(null);
+  /** Реквизиты записи на правке, изменённые «изменить» (задача 16): уходят
+   *  в `entry_save` как `reqs`. Другая запись или конец правки — сброс. */
+  const [reqsEdit, setReqsEdit] = useState<Case | null>(null);
+  useEffect(() => { setReqsEdit(null); }, [editingId]);
   const editingRef = useRef(editingId);
   editingRef.current = editingId;
   /** Год, сохранённый на «Деле», пока запись была открыта на правку: после
@@ -658,6 +664,7 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
     try {
       const done = await invoke<{ id: number; case_id: number; new_case_year: number | null;
                                   fallback_case: boolean; fallback_year: number | null }>("entry_save", {
+        reqs: editingId !== null ? reqsEdit : null,
         entry: {
           scan_file: entryScan.forSave(),
           id: editingId, case_id: mkCase.id, section: 3, page,
@@ -674,8 +681,8 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
       // Дело — на год книги: год встретился впервые — дело заведено копией
       // прошлого, реквизиты надо проверить (спека 2026-10-02, п. 3.2).
       if (done.new_case_year !== null)
-        warn(`Новый год книги ${done.new_case_year}`,
-             "ему заведено своё дело копией прошлого — проверьте фонд, опись и дело на экране «Дело»");
+        warn(`Первая запись ${done.new_case_year} года с этими реквизитами`,
+             `${reqsText(mkCase)} — если у этой книги другие фонд, опись или дело, измените их на экране «Дело» (у этой записи — «изменить» в правке)`);
       // Запись без года, а её дело убрано: легла в первое дело прихода — не молча.
       if (done.fallback_case)
         warn("Запись без года привязана к другому делу",
@@ -1007,6 +1014,7 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
           <b>Правка записи</b> — сохранённая запись о смерти открыта в форме. «Сохранить
           изменения» перепишет её; «Отменить» оставит как была.
           {entryScan.bar}
+          {editingId !== null && <EntryReqs entryId={editingId} value={reqsEdit} onChange={setReqsEdit} />}
           <button type="button" className="toggle" onClick={restoreAfterEdit}>Отменить</button>
         </div>
       )}

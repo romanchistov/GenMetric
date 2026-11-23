@@ -79,7 +79,6 @@ export default function App() {
   /** Новый год, заведённый сменой года на форме и ещё без записей: вернулись
    *  с него на год с записями (опечатка) — его пустое дело убирается. */
   const openedEmpty = useRef<number | null>(null);
-  const [showYear, setShowYear] = useState<{ year: number; n: number } | null>(null);
   /** Год сменили на форме (спека 2026-10-19-oshibki-svyazej-i-dovodka, Ж2.7):
    *  новый год — его дело, все формы и окно встают на него с чистого листа;
    *  возврат с только что заведённого года на год с записями — окно и формы
@@ -111,17 +110,12 @@ export default function App() {
       // Окно уже на этом годе (пустое дело, заведённое до перезапуска), а
       // форма — на прежнем: формы всё равно встают на него (Роман 20.10.2026).
       setMkCase(r.case);
-      setShowYear((prev) => ({ year, n: (prev?.n ?? 0) + 1 }));
       const freshSections = [1, 2, 3].filter((k) => (r.sections?.[k - 1] ?? 0) === 0);
       setWorkYear((prev) => ({ year, fresh: r.fresh, freshSections, n: (prev?.n ?? 0) + 1 }));
       lastMove.current = r.fresh && from !== null ? { from, to: year } : null;
       // Убрать при возврате можно только дело, которое завела сама смена года:
       // заведённое человеком на экране «Дело» (с реквизитами) — нет.
       openedEmpty.current = r.created ? year : null;
-      if (left !== null && left !== year) {
-        await invoke<boolean>("case_delete", { year: left })
-          .catch((e) => { report(`Пустое дело ${left} года не убрано`, e); return false; });
-      }
       // Окно выбора папки — только году совсем без записей: у начатого года
       // папка уже выбрана, а возврат не повод её спрашивать.
       return r.fresh;
@@ -135,7 +129,9 @@ export default function App() {
     openedEmpty.current = null;
     // Дело без года с первой записью получает её год — экран «Дело» должен
     // это узнать, иначе сохранит прежний пустой год (ревьюер 02.10.2026).
-    if (mkCase && (caseId !== mkCase.id || mkCase.year === null)) setCaseReload((n) => n + 1);
+    // Список «Дела прихода» (число записей) — перечитать (задача 16).
+    void caseId;
+    setCaseReload((n) => n + 1);
   }
   type Screen = "case" | "births" | "marriages" | "deaths" | "about" | "search";
   const [screen, setScreen] = useState<Screen>("case");
@@ -323,24 +319,24 @@ export default function App() {
           <button
             className={screen === "births" ? "on" : ""}
             onClick={() => setScreen("births")}
-            disabled={!mkCase || !mkCase.id}
-            title={mkCase && mkCase.id ? "" : "Сначала заполните дело"}
+            disabled={!mkCase}
+            title={mkCase ? "" : "Сначала заполните дело"}
           >
             Рождения
           </button>
           <button
             className={screen === "marriages" ? "on" : ""}
             onClick={() => setScreen("marriages")}
-            disabled={!mkCase || !mkCase.id}
-            title={mkCase && mkCase.id ? "" : "Сначала заполните дело"}
+            disabled={!mkCase}
+            title={mkCase ? "" : "Сначала заполните дело"}
           >
             Браки
           </button>
           <button
             className={screen === "deaths" ? "on" : ""}
             onClick={() => setScreen("deaths")}
-            disabled={!mkCase || !mkCase.id}
-            title={mkCase && mkCase.id ? "" : "Сначала заполните дело"}
+            disabled={!mkCase}
+            title={mkCase ? "" : "Сначала заполните дело"}
           >
             Смерти
           </button>
@@ -360,8 +356,10 @@ export default function App() {
           „Рождения“ становятся пустыми». Это была потеря работы, а не
           неудобство. */}
       <div hidden={screen !== "case"}>
-        <CaseHeader onSaved={setMkCase} reload={caseReload} showYear={showYear} parishName={startup?.parish_name ?? ""}
-                    onWorkYear={(year, fresh) => setWorkYear((prev) => ({ year, fresh, n: (prev?.n ?? 0) + 1 }))}
+        <CaseHeader reload={caseReload} parishName={startup?.parish_name ?? ""}
+                    // Текущие реквизиты (задача 16): год окна — свой, его
+                    // реквизиты не меняют; первое чтение даёт год последней работы.
+                    onSaved={(c) => setMkCase((prev) => ({ ...c, id: prev?.id ?? c.id, year: prev?.year ?? c.year }))}
                     onOpenEntry={openEntry}
                     viewBlock={<>
                       {/* Кнопка поиска — здесь, а не в верхней строке окна: она
@@ -398,7 +396,7 @@ export default function App() {
       </div>
       {/* Причт общий для всех разделов (27.09.2026) — clergy.tsx. Формы
           браков и смертей (25.09, 27.09) так же не размонтируются. */}
-      {mkCase && mkCase.id > 0 && (
+      {mkCase && (
         <ClergyProvider>
           <div hidden={screen !== "births"}>
             <BirthForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} />

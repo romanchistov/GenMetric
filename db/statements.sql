@@ -188,6 +188,21 @@ DELETE FROM mk_case
 -- меняются.
 UPDATE mk_case SET parish_key = :parish_key, indexer = :indexer;
 
+-- @case_list
+-- Дела прихода для экрана «Дело» (задача 16): год, реквизиты, число записей.
+SELECT c.id, c.year, c.archive, c.fond, c.opis, c.delo, c.church, c.village, c.uyezd, c.guberniya,
+       (SELECT count(*) FROM entry e WHERE e.case_id = c.id) AS entries
+  FROM mk_case c
+ ORDER BY c.year IS NULL, c.year, c.id;
+
+-- @case_fix
+-- «Исправить реквизиты» дела (задача 16): опечатка в ФОД — у всех записей
+-- этого дела. Год, ключ прихода и индексатор дела не меняются.
+UPDATE mk_case
+   SET archive = :archive, fond = :fond, opis = :opis, delo = :delo, church = :church,
+       village = :village, uyezd = :uyezd, guberniya = :guberniya, updated_at = datetime('now')
+ WHERE id = :id;
+
 -- @entry_insert
 INSERT INTO entry (case_id, section, page, no_male, no_female,
                    event_day, event_month, event_year,

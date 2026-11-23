@@ -1,4 +1,6 @@
 import DeleteEntry from "./DeleteEntry";
+import EntryReqs, { reqsText } from "./EntryReqs";
+import type { Case } from "./CaseHeader";
 import { SAVE_KEY } from "./keys";
 import { useEffect, useRef, useState } from "react";
 import { ScanLink, useEntryScan, useScan } from "./scan";
@@ -282,6 +284,10 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
   // Заказчик 22.09.2026 индексирует в программе по-настоящему; до этого
   // единственный способ поправить запись был перенабрать её.
   const [editingId, setEditingId] = useState<number | null>(null);
+  /** Реквизиты записи на правке, изменённые «изменить» (задача 16): уходят
+   *  в `entry_save` как `reqs`. Другая запись или конец правки — сброс. */
+  const [reqsEdit, setReqsEdit] = useState<Case | null>(null);
+  useEffect(() => { setReqsEdit(null); }, [editingId]);
   // Где стояли до правки: страница, счёт, год, месяцы. После правки старой
   // записи форма возвращается сюда, а не к странице той записи.
   // Причт — тоже: в открытой записи он может быть другим (или пустым у
@@ -847,6 +853,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     try {
       const done = await invoke<{ id: number; case_id: number; new_case_year: number | null;
                                   fallback_case: boolean; fallback_year: number | null }>("entry_save", {
+        reqs: editingId !== null ? reqsEdit : null,
         entry: {
           scan_file: entryScan.forSave(),
           id: editingId,
@@ -871,8 +878,8 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       // Дело — на год книги: год встретился впервые — дело заведено копией
       // прошлого, реквизиты надо проверить (спека 2026-10-02, п. 3.2).
       if (done.new_case_year !== null)
-        warn(`Новый год книги ${done.new_case_year}`,
-             "ему заведено своё дело копией прошлого — проверьте фонд, опись и дело на экране «Дело»");
+        warn(`Первая запись ${done.new_case_year} года с этими реквизитами`,
+             `${reqsText(mkCase)} — если у этой книги другие фонд, опись или дело, измените их на экране «Дело» (у этой записи — «изменить» в правке)`);
       // Запись без года, а её дело убрано: легла в первое дело прихода — не молча.
       if (done.fallback_case)
         warn("Запись без года привязана к другому делу",
@@ -1148,6 +1155,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
           <b>Правка записи</b> — сохранённая запись открыта в форме. «Сохранить
           изменения» перепишет её; «Отменить» оставит как была.
           {entryScan.bar}
+          {editingId !== null && <EntryReqs entryId={editingId} value={reqsEdit} onChange={setReqsEdit} />}
           <button type="button" className="toggle" onClick={cancelEdit}>Отменить</button>
         </div>
       )}

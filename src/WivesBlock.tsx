@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Modal from "./Modal";
 import { report } from "./errors";
 import { dirtyForms } from "./dirty";
+import OpenRefused from "./OpenRefused";
 
 /**
  * Дозаполнение фамилий жён по мужьям (З4.4, спека 2026-10-20-familii-zhyon.md).
@@ -27,6 +28,8 @@ export default function WivesBlock({ onOpenEntry }: { onOpenEntry: (section: num
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
+  /** «Открыть» не сработало — есть несохранённое: отказ под этой строкой (п. 6). */
+  const [blocked, setBlocked] = useState<{ id: number; forms: string[] } | null>(null);
 
   async function look() {
     setBusy(true);
@@ -66,6 +69,7 @@ export default function WivesBlock({ onOpenEntry }: { onOpenEntry: (section: num
     setPlan(null);
     setDone(null);
     setRefused(null);
+    setBlocked(null);
   }
 
   const chosen = plan ? plan.fill.filter((p) => !off.has(p.wife_id)).length : 0;
@@ -117,7 +121,7 @@ export default function WivesBlock({ onOpenEntry }: { onOpenEntry: (section: num
                         // Форма с набранным запись не откроет — сказать здесь, не теряя список.
                         const forms = dirtyForms();
                         if (forms.length) {
-                          setRefused(`Чтобы открыть запись, сначала сохраните или очистите набранное: ${forms.join(", ")}.`);
+                          setBlocked({ id: p.wife_id, forms });
                           return;
                         }
                         close();
@@ -125,6 +129,9 @@ export default function WivesBlock({ onOpenEntry }: { onOpenEntry: (section: num
                       }}>
                         Открыть
                       </button>
+                      {blocked?.id === p.wife_id && (
+                        <div><OpenRefused forms={blocked.forms} onOpen={() => { setBlocked(null); close(); onOpenEntry(p.section, p.entry_id); }} /></div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -2246,7 +2246,9 @@ def incident_20261105_familii_zhyon():
     check("фамилии жён: дата изменения записи; пол в смертях — без противоречия; дореформенные написания",
           "UPDATE entry SET updated_at = datetime('now')" in w and "_ => unclear += 1," in w and "normalize_name(first)" in w)
     check("фамилии жён: «Открыть» при несохранённом — объяснение в окне, список не теряется",
-          "Чтобы открыть запись, сначала сохраните или очистите набранное" in blk)
+          # С 23.11.2026 (п. 6) отказ — под строкой, компонентом OpenRefused;
+          # окно при этом не закрывается (close() — только после открытия).
+          "setBlocked({ id: p.wife_id, forms });" in blk and "<OpenRefused" in blk)
 
 
 def incident_20261104_ochistka_spravochnikov_i_dolg():
@@ -2615,7 +2617,28 @@ def incident_20261120_familiya_materi_posle_slovarya():
           "onIofResolved={motherLeft}" in strip_comments(read("src/BirthForm.tsx")))
 
 
+def incident_20261120_otkryt_molcha():
+    """Олег 20.11.2026, Бэклог р. 3 п. 6: «Найти и заменить» → «Открыть» —
+    «жму открыть, ничего не происходит». В форме «Рождения» был
+    несохранённый набор; отказ писался серой строкой внизу блока, вне
+    взгляда.
+
+    Защита: отказ — прямо под нажатой ссылкой (`OpenRefused`), с названием
+    формы и кнопкой «Очистить и открыть»; так же в «Фамилиях жён». Стенд —
+    _стенд/s84.mjs.
+    """
+    for name in ("FindReplaceBlock", "WivesBlock"):
+        src = strip_comments(read(f"src/{name}.tsx"))
+        check(f"{name}: отказ «Открыть» — под строкой, с «Очистить и открыть»", "<OpenRefused" in src)
+    fr = strip_comments(read("src/FindReplaceBlock.tsx"))
+    check("«Найти и заменить»: отказ «Открыть» не уходит в строку внизу блока",
+          "setNote(`Чтобы открыть запись" not in fr)
+    check("«Очистить и открыть» очищает формы тем же, что окно «Приходы»",
+          "clearDirtyForms()" in strip_comments(read("src/OpenRefused.tsx")))
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261120_otkryt_molcha,
     incident_20261120_familiya_materi_posle_slovarya,
     incident_20261123_prichet_posle_zapuska,
     incident_20261118_otvet_na_1_0,

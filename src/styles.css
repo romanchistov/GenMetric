@@ -719,6 +719,8 @@ h2 .ofyear { font-weight: normal; color: var(--muted, #666); }
    отступ (Роман 19.11.2026: «блоки сливаются»). */
 .modalbar.parishbar { margin-top: 0.9em; padding-top: 0.8em; border-top: 0.0625em solid #dfe6ee; }
 .refused { margin: 0 0 0.5em; padding: 0.4em 0.6em; background: #fff7e0; border: 0.0625em solid #e6c766; border-radius: 0.4em; font-size: 0.85rem; }
+/* Отказ «Открыть» под строкой (п. 6, 23.11.2026) — тот же жёлтый, что у отказов. */
+.openrefused { display: inline-block; margin: 0.2em 0; padding: 0.3em 0.6em; background: #fff7e0; border: 0.0625em solid #e6c766; border-radius: 0.4em; font-size: 0.85rem; }
 .importagain { margin: 0.4em 0; font-size: 0.88rem; }
 .importagain p { margin: 0 0 0.3em; }
 /* Кнопка выбора — слева, на одной строке с текстом (Роман 26.10.2026: над

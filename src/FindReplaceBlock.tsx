@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { report } from "./errors";
 import { dirtyForms } from "./dirty";
+import OpenRefused from "./OpenRefused";
 
 /**
  * «Найти в записях» на «ⓘ О программе» (спека 2026-11-13-sprint-139-149,
@@ -40,9 +41,11 @@ export default function FindReplaceBlock({ onOpenEntry }: { onOpenEntry: (sectio
   const [sure, setSure] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  /** «Открыть» не сработало — есть несохранённое: строка отказа под этой записью. */
+  const [refused, setRefused] = useState<{ id: number; forms: string[] } | null>(null);
 
   async function look(q = query, f = field) {
-    setPicked(null); setHits([]); setSure(false); setNote(null);
+    setPicked(null); setHits([]); setSure(false); setNote(null); setRefused(null);
     if (!q.trim()) { setFound(null); return; }
     try {
       setFound(await invoke<Spelling[]>("replace_spellings", { field: f, query: q }));
@@ -134,22 +137,30 @@ export default function FindReplaceBlock({ onOpenEntry }: { onOpenEntry: (sectio
           <table className="facts">
             <tbody>
               {hits.slice(0, SHOWN).map((h, i) => (
-                <tr key={`${h.entry_id}-${i}`}>
+                <Fragment key={`${h.entry_id}-${i}`}>
+                <tr>
                   <td>{SECTION[h.section] ?? "запись"} {h.year ?? "без года"}{h.page ? `, стр. ${h.page}` : ""}{h.no != null ? `, № ${h.no}` : ""}</td>
                   <td>{h.who || "имени нет"}</td>
                   <td>
                     <button type="button" className="linkish" onClick={() => {
                       const forms = dirtyForms();
                       if (forms.length) {
-                        setNote(`Чтобы открыть запись, сначала сохраните или очистите набранное: ${forms.join(", ")}.`);
+                        setRefused({ id: h.entry_id, forms });
                         return;
                       }
+                      setRefused(null);
                       onOpenEntry(h.section, h.entry_id);
                     }}>
                       Открыть
                     </button>
                   </td>
                 </tr>
+                {refused?.id === h.entry_id && (
+                  <tr><td colSpan={3}>
+                    <OpenRefused forms={refused.forms} onOpen={() => { setRefused(null); onOpenEntry(h.section, h.entry_id); }} />
+                  </td></tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

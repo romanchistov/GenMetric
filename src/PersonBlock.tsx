@@ -141,6 +141,11 @@ type Props = {
    *  пустой НП (восприемник — НП отца): подставленное выделяется, когда
    *  курсор в поле НП, — набор затирает его, Tab оставляет (п. 147). */
   onIofLeave?: () => string | void;
+  /** ИОФ заменено словом из словаря (запомненное написание или выбор в окне
+   *  сверки) уже после ухода из поля: правила «после ухода» формы (фамилия
+   *  мужа матери) иначе видели прежний текст и выходили (Роман 20.11.2026,
+   *  п. 8). Зовётся, только если курсор уже не в этом поле. */
+  onIofResolved?: () => void;
   /** Мать: «законная жена его» в подсказке персон — как есть. */
   keepWifeRank?: boolean;
   /** Блок свёрнут (Fold.tsx): он остаётся в окне, но не на экране — его
@@ -255,7 +260,7 @@ export default function PersonBlock({
   title, person, onChange, rankKind, withConfession, withMaiden, onPickPerson,
   inputRef, gender, genderGuessed, compact, placeDefaults, onPlaceRenamed, before, modernOverride, extra, titleExtra, noPlace, titleAfter, noNoteLink, rankAuto,
   confessionLabel, preferInfant, noIof, infantRows, infantYear, infantPlace,
-  defaultRank, enterToEmpty, onIofLeave, keepWifeRank, hidden,
+  defaultRank, enterToEmpty, onIofLeave, onIofResolved, keepWifeRank, hidden,
 }: Props) {
   const latest = useRef(person);
   latest.current = person;
@@ -454,6 +459,8 @@ export default function PersonBlock({
         onResolved={(iof, note) => {
           markDocNotes(iof, note, docFor.current);
           set({ iof, parsed: null, note: appendNote(person.note, note) });
+          // После перерисовки — форма читает новый текст из своей ссылки.
+          if (onIofResolved) setTimeout(() => { if (!inputRef?.current || document.activeElement !== inputRef.current) onIofResolved(); }, 0);
         }}
         onPickPerson={(hint) => {
           // Отметка — того, кого выбрали: сохранённого именем и фамилией

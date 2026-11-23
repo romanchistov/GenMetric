@@ -1271,6 +1271,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
         enterToEmpty
         keepWifeRank
         onIofLeave={motherLeft}
+        onIofResolved={motherLeft}
         onPickPerson={(hint) => {
           // Мать из подсказки — «законная жена его», а не звание из её
           // прежней записи («крестьянская жена»; Роман 16.11.2026). Только в

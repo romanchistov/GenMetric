@@ -2597,7 +2597,26 @@ def incident_20261123_prichet_posle_zapuska():
     check("правило «имя потеряно» — в names.ts (его проверяет test_names.mjs)", "export function nameLost(" in names)
 
 
+def incident_20261120_familiya_materi_posle_slovarya():
+    """Роман 20.11.2026, Бэклог р. 3 п. 8: мать «Пилагия Александрова» с
+    запомненным написанием «Пелагея» — имя заменилось, примечание
+    написалось, а фамилия мужа не дописалась: поле успевало заменить текст,
+    пока форма разбирала прежний, и правило формы выходило. После окна
+    сверки — то же (выход по открытому окну).
+
+    Защита: замена по словарю после ухода из поля зовёт правило формы заново
+    (`onIofResolved` блока персоны → `motherLeft`). Стенд — _стенд/s86.mjs.
+    """
+    block = strip_comments(read("src/PersonBlock.tsx"))
+    i = block.find("onResolved={(iof, note) => {")
+    check("блок персоны после замены по словарю зовёт правило формы",
+          i >= 0 and "onIofResolved()" in block[i:i + 600])
+    check("мать: правило фамилии мужа — и после замены по словарю",
+          "onIofResolved={motherLeft}" in strip_comments(read("src/BirthForm.tsx")))
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261120_familiya_materi_posle_slovarya,
     incident_20261123_prichet_posle_zapuska,
     incident_20261118_otvet_na_1_0,
     incident_20261118_sprint_165_170,

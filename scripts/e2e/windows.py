@@ -229,7 +229,7 @@ def run(driver, wait, archive):
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".app")))
     body = driver.find_element(By.TAG_NAME, "body").text
     check("база справочников открылась", "База не открылась" not in body)
-    check("экран «Дело» на месте", "Сохранить дело" in body)
+    check("экран «Дело» на месте", "Сохранить реквизиты" in body)
     # Окно по высоте экрана (заказчик 24.09.2026): целиком в рабочей области
     # и занимает её почти всю. Раньше только печаталось (техдолг после #36).
     # screen.availTop — верх рабочей области (панель задач сверху бывает).
@@ -273,7 +273,7 @@ def run(driver, wait, archive):
           "error" not in clean and clean["check"].get("known") is False and clean["places"] == 0 and clean["ranks"] == 51,
           str(clean)[:300])
     village_card(driver, wait, "Борисоглебское")
-    driver.find_element(By.XPATH, "//button[normalize-space()='Сохранить дело']").click()
+    driver.find_element(By.XPATH, "//button[normalize-space()='Сохранить реквизиты']").click()
     wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, "body"), "Сохранено"))
     check("дело сохранено, карточка села второй раз не открылась",
           not wait_until(lambda: bool(driver.find_elements(By.CSS_SELECTOR, ".modal[data-modal='place']")), 1.5))
@@ -1767,7 +1767,7 @@ def join_parishes(driver, wait):
         click(driver, "//button[@data-merge-finish]")
         reloaded(driver, wait, "Слияние проба")
     body = driver.find_element(By.TAG_NAME, "body").text
-    check("после слияния у прихода есть дело (реквизиты — из файла помощника)", "Дело за" in body, body[:200].replace("\n", " | "))
+    check("после слияния у прихода есть дело (реквизиты — из файла помощника)", "Дела прихода" in body, body[:200].replace("\n", " | "))
     for modal in driver.find_elements(By.XPATH, "//div[@data-modal='review']"):
         if modal.is_displayed():
             click(driver, "//div[@data-modal='review']//button[starts-with(normalize-space(),'Закрыть')]")
@@ -1925,12 +1925,12 @@ def parishes(driver, wait):
           "/" not in path_text and "Николо-Макарово" in path_text, path_text)
     tab(driver, 'Дело')
     body = driver.find_element(By.TAG_NAME, "body").text
-    check("новый приход пуст: дело не заполнено", "Дело за" not in body, body[:200].replace("\n", " | "))
+    check("новый приход пуст: дел нет", "Дела прихода" not in body, body[:200].replace("\n", " | "))
     for label, value in [("Архив", "ГА Костромской области"), ("Церковь", "Никольская"),
                          ("Уезд", "Макарьевский"), ("Село", "Николо-Макарово")]:
         fill(driver, label, value)
     village_card(driver, wait, "Николо-Макарово")
-    driver.find_element(By.XPATH, "//button[normalize-space()='Сохранить дело']").click()
+    driver.find_element(By.XPATH, "//button[normalize-space()='Сохранить реквизиты']").click()
     wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, "body"), "Сохранено"))
     tab(driver, 'Рождения')
     b = "//div[contains(@class,'birth')]//"
@@ -1952,36 +1952,31 @@ def parishes(driver, wait):
     block = driver.find_element(By.CSS_SELECTOR, ".birth").text
     check("запись в новом приходе сохранена, список — за её год",
           "Набрано: 1 — за 1890 год" in block, error_details(driver) + " | " + hints[:120].replace("\n", " | "))
-    # Свободный порядок на экране «Дело» (Роман 03.10.2026): поправил дело,
-    # поставил новый год, сохранил — и набирает; прошлый год не тронут.
+    # Задача 16 (Роман 23.11.2026): реквизиты — текущие, год — только в
+    # формах. Сменили «Дело» на «77» — набранное (1890) не меняется, форма
+    # остаётся на своём годе; новая запись получит «77».
     tab(driver, 'Дело')
     fill(driver, "Дело", "77")
-    fill(driver, "Год книги", "1891")
-    click(driver, "//button[normalize-space()='Сохранить дело']")
-    try:
-        wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, "body"), "заведено своё дело"))
-    except TimeoutException:
-        pass
-    try:  # список годов приходит отдельным запросом, чуть позже текста
-        wait.until(EC.text_to_be_present_in_element((By.CSS_SELECTOR, "h2.caseyear"), "1890"))
-    except TimeoutException:
-        pass
-    head = driver.find_element(By.CSS_SELECTOR, "h2.caseyear").text
-    check("новому году заведено своё дело: «Дело за 1891 год», в списке и 1890",
-          "Дело за 1891 год" in head and "1890" in head, head.replace("\n", " | ") + " | " + error_details(driver))
+    click(driver, "//button[normalize-space()='Сохранить реквизиты']")
+    wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, "body"), "набранные раньше не изменились"))
+    driver.set_script_timeout(20)
+    after = driver.execute_async_script(
+        "const done = arguments[arguments.length - 1];"
+        "const call = window.__TAURI_INTERNALS__.invoke;"
+        "Promise.all([call('case_list', {}), call('case_reqs_get', {})])"
+        ".then((r) => done({cases: r[0], reqs: r[1]}), (e) => done({error: String(e)}));")
+    check("смена реквизитов: набранное дело 1890 — прежнее, текущие — «77» (настоящий Rust)",
+          "error" not in after and len(after["cases"]) == 1 and after["cases"][0]["case"]["delo"] != "77"
+          and (after["reqs"] or {}).get("delo") == "77", str(after)[:300])
     tab(driver, 'Рождения')
     year = field(driver, "Год", b).get_attribute("value")
-    check("формы встали на новый год", year == "1891", f"«{year}»")
+    check("форма осталась на своём годе", year == "1890", f"«{year}»")
     # Спека 2026-10-20-dosye-i-dovodka, п. 2 (Роман 20.10.2026): год меняют
-    # кнопками «+/−», без ухода из поля. «−» на 1890 (год с записями), страница
-    # «5», «+» на 1891 (пустое дело заведено заранее) — форма с чистого листа:
-    # без нового года страница осталась бы «5».
+    # кнопками «+/−», без ухода из поля. Страница «5», «+» на 1891 (следующий
+    # за годом с записями) — форма с чистого листа.
     plus = b + "div[contains(@class,'field')][./label[normalize-space()='Год']]//button[@aria-label='Больше']"
-    minus = b + "div[contains(@class,'field')][./label[normalize-space()='Год']]//button[@aria-label='Меньше']"
     # Системное окно выбора папки роботу недоступно: «отмена» вместо него.
     driver.execute_script("window.__pickScanDir = () => null;")
-    click(driver, minus)
-    time.sleep(1.5)
     fill(driver, "Стр.", "5", b)
     click(driver, plus)
     time.sleep(2.0)
@@ -1995,15 +1990,10 @@ def parishes(driver, wait):
     page = field(driver, "Стр.", b).get_attribute("value")
     check("кнопка «+» года: 1891 с чистого листа (страница пуста)", year == "1891" and page == "",
           f"год «{year}», стр. «{page}» | " + error_details(driver))
-    tab(driver, 'Дело')
-    # Год без правки реквизитов и уход из поля — открывает дело этого года.
-    fill(driver, "Год книги", "1890")
-    field(driver, "Фонд").click()
-    wait_until(lambda: "Дело за 1890 год" in driver.find_element(By.CSS_SELECTOR, "h2.caseyear").text, 5)
-    head = driver.find_element(By.CSS_SELECTOR, "h2.caseyear").text
-    delo = field(driver, "Дело").get_attribute("value")
-    check("у 1890 года реквизиты прежние — дело не «77»", "Дело за 1890 год" in head and delo != "77",
-          f"{head.splitlines()[0]} | дело «{delo}»")
+    gone = driver.execute_async_script(
+        "const done = arguments[arguments.length - 1];"
+        "window.__TAURI_INTERNALS__.invoke('case_list', {}).then((r) => done(r.length), (e) => done(String(e)));")
+    check("смена года дело не заводит (появится с первой записью года)", gone == 1, str(gone))
     # Общие справочники: пункт, заведённый в первом приходе (шаг 9), здесь известен.
     open_parishes(driver, wait)
     listing = driver.find_element(By.XPATH, PARISH).text
@@ -2134,11 +2124,10 @@ def parishes(driver, wait):
         click(driver, "//div[contains(@class,'birth')]//div[contains(@class,'editbar')]//button[normalize-space()='Отменить']")
         time.sleep(0.5)
     tab(driver, 'Дело')
-    head = driver.find_element(By.CSS_SELECTOR, "h2.caseyear").text
-    check("дело — на год: открыт последний год, в списке оба",
-          "Дело за 1890 год" in head and "1889" in head, head.replace("\n", " | "))
+    listed = driver.execute_script("return document.querySelector('[data-case-list]')?.textContent ?? ''")
+    check("дела по годам: в «Делах прихода» оба года", "1890" in listed and "1889" in listed, listed[:300])
     delo = field(driver, "Дело").get_attribute("value")
-    check("у 1890 года своё дело — 12", delo == "12", f"«{delo}»")
+    check("текущие реквизиты — от дела последней записи (1890, «12»)", delo == "12", f"«{delo}»")
     tab(driver, 'Рождения')
     try:
         wait.until(EC.text_to_be_present_in_element((By.CSS_SELECTOR, ".birth"), "Набрано: 3"))

@@ -734,8 +734,8 @@ def incident_20261002_odno_delo_na_vse_gody():
     forms = [strip_comments(read(f"src/{f}")) for f in ("BirthForm.tsx", "MarriageForm.tsx", "DeathForm.tsx")]
     check("формы не решают, к какому делу запись, и напоминают о новом годе",
           all("new_case_year" in t and "caseId: mkCase.id" not in t for t in forms))
-    check("экран «Дело» показывает дело года и даёт выбрать другой",
-          "case_years" in read("src/CaseHeader.tsx") and "Дело за ${loadedYear} год" in read("src/CaseHeader.tsx"))
+    check("экран «Дело» показывает дела прихода и даёт исправить реквизиты дела (задача 16)",
+          '"case_list"' in read("src/CaseHeader.tsx") and '"case_fix"' in read("src/CaseHeader.tsx"))
     check("поведение проверено: test_entry, test_upgrade, test_export",
           "9г. Дело — на год книги" in read("db/test_entry.py")
           and "дело на год: у 1896 и 1897 годов" in read("db/test_upgrade.py")
@@ -771,8 +771,9 @@ def incident_20261003_otvet_na_prihody():
           "pub fn save_case" in rec and '"created"' in rec and '"exists"' in rec and "if !overwrite" in rec)
     check("три ветки сохранения дела проверены тестом крейта", "fn case_free_order" in read("src-tauri/core/src/records.rs"))
     ch = read("src/CaseHeader.tsx")
-    check("год книги — поле на экране «Дело», чужой год — с вопросом",
-          'label="Год книги"' in ch and 'r.status === "exists"' in ch and "save(true)" in ch)
+    # С 23.11.2026 (задача 16, Роман): «из вкладки дело убрать год».
+    check("года на экране «Дело» нет: реквизиты — текущие",
+          'label="Год книги"' not in ch and '"case_reqs_save"' in ch)
     blocks = dict(re.findall(r"-- @(\w+)\n(.*?)(?=\n-- @|\Z)", read("db/statements.sql"), re.S))
     inf = strip_comments(blocks.get("infant_suggest", ""))
     check("подсказка младенца: окно 4 года (с 14.10, было 2), деревня, имя родителя",
@@ -1630,9 +1631,10 @@ def incident_20261016_oshibki_i_dovodka():
           "if rest.first().is_some_and(|w| is_no_name(w)) {" in records
           and "person.patronymic.as_deref().map(str::trim).filter(|v| !v.is_empty() && !v.contains('*'))" in records)
     case = read("src/CaseHeader.tsx")
-    check("после «Сохранить дело» с новым годом окно встаёт на его дело; пересохранение пустого года форму не сбрасывает",
-          'invoke<Case | null>("case_load", { year: empty ? next.year : null })' in case
-          and 'const fresh = empty && (r.status === "created" || yearMoved);' in case)
+    # С 23.11.2026 (задача 16) года на «Деле» нет: «Сохранить» год окна не
+    # двигает — папка сканов не может уйти в чужой год.
+    check("«Сохранить» на «Деле» год окна не меняет (папка сканов — своего года)",
+          "onWorkYear" not in case and "year: prev?.year ?? c.year" in read("src/App.tsx"))
     check("обрывок со звёздочками не открывает сверку имени и по Enter при открытом списке",
           "if (maskFragment(text)) return;" in read("src/IofField.tsx"))
     check("у нового пункта курсор — в «Тип», окно отдаёт data-autofocus первым",
@@ -1640,7 +1642,8 @@ def incident_20261016_oshibki_i_dovodka():
           and 'querySelector<HTMLElement>("[data-autofocus]")' in read("src/Modal.tsx"))
     check("новый год — форма с чистого листа во всех трёх формах",
           all("if (freshHere && editingId === null) startFresh(workYear.year);" in read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm"))
-          and "onWorkYear(next.year, fresh);" in case and "if (!last) return 1;" in read("src/count.ts"))
+          and "setWorkYear((prev) => ({ year, fresh: r.fresh, freshSections" in read("src/App.tsx")
+          and "if (!last) return 1;" in read("src/count.ts"))
     check("у нового пункта есть поле названия (кроме тёзки)", "const titleEditable = !!existing || !twin;" in read("src/PlaceCard.tsx"))
     sql = read("db/statements.sql").split("-- @usage_bump\n", 1)[1].split("\n-- @", 1)[0]
     check("закрытый перечень копит частоту только своим значениям, обновление убирает чужое",
@@ -2343,7 +2346,8 @@ def incident_20261103_otvet_romana_na_sborku_03_11():
     # Находки ревьюера 03.11.2026 (до выкладки).
     # С 06.11.2026: дела ещё нет (новый приход) — поля пустеют (стенд s75).
     check("«Очистить» очищает и «Дело» (перечитывает реквизиты; без дела — пустые поля), а не только формы записей",
-          'load(loadedYear, c.id);' in read("src/CaseHeader.tsx") and "setC(EMPTY);" in read("src/CaseHeader.tsx"))
+          # С 23.11.2026 (задача 16) — перечитывает текущие реквизиты.
+          'setClearer("Дело", () => load());' in read("src/CaseHeader.tsx") and "setC(EMPTY);" in read("src/CaseHeader.tsx"))
     # С 13.11.2026 (п. 143): и на трёх буквах — «Мар» не встаёт над «Марией».
     check("«Марк» + Enter не даёт «Маркел»: словарное слово не поднимается только при наборе до трёх букв",
           "(typedNorm.length > 3 || used(sexed[exactFound]) || !sexed.some(used))" in iof)
@@ -2495,9 +2499,12 @@ def incident_20261019_oshibki_svyazej():
           'invoke<{ case: Case | null; fresh: boolean; created: boolean; typo: boolean; sections: number[] }>("case_open_year", { year })' in read("src/App.tsx")
           and "if fresh && !has_case && before == 0 {" in read("src-tauri/src/main.rs") and "if last.is_none() {" in read("src-tauri/src/main.rs") and "scanCtx.askDir" in read("src/MarriageForm.tsx")
           and "fn case_open_year(" in read("src-tauri/src/main.rs"))
-    check("при возврате убирается только дело, заведённое сменой года, а не заведённое человеком на «Деле» (ревьюер 19.10.2026)",
-          "openedEmpty.current = r.created ? year : null;" in read("src/App.tsx")
-          and "let created = fresh && genmetric_core::records::case_for_year(conn, year)?.1;" in read("src-tauri/src/main.rs"))
+    # С 23.11.2026 (задача 16) смена года дело не заводит вовсе — убирать при
+    # возврате нечего, и дело, заведённое человеком, не тронется.
+    check("смена года дела не заводит и при возврате ничего не убирает (ревьюер 19.10.2026, задача 16)",
+          'invoke<boolean>("case_delete"' not in read("src/App.tsx")
+          and "fresh, created: false, typo: false, sections })" in read("src-tauri/src/main.rs")
+          and "case_for_year(conn, year)" not in strip_comments(read("src-tauri/src/main.rs")))
     check("после перезапуска — пустой новый год, заведённый позже последней записи (долг п. 67)",
           "AND c.created_at > coalesce((SELECT max(e.created_at) FROM entry e), '')" in blocks["case_current"])
     check("приставка типа пункта отсекается в выгрузке и в поиске Familio",
@@ -2660,7 +2667,28 @@ def incident_20261120_mladenec_bez_familii():
           "pub fn infant_fits(" in lib and "fn infant_by_surname()" in lib)
 
 
+def incident_20261120_fod_u_vseh_zapisej_goda():
+    """Роман 20.11.2026 (задача 16): у рождений, браков и смертей одного года
+    разные ФОД (ф. 56 оп. 6 д. 4/5/6). «Сохранить дело» с другим ФОД меняло
+    его у всех записей года — у рождений оказался бы ФОД смертей, на экране
+    не видно.
+
+    Защита: реквизиты — текущие, запись ложится в дело «год + реквизиты»
+    (`save_entry_window`, тест крейта `window_cases_by_reqs`); смена
+    реквизитов дела не трогает (`case_spread_key` — без архива); стенд s88.
+    """
+    main = strip_comments(read("src-tauri/src/main.rs"))
+    check("запись из окна — в дело «год + текущие реквизиты»",
+          "genmetric_core::records::save_entry_window(conn, &entry, reqs.as_ref())" in main)
+    blocks = dict(re.findall(r"-- @(\w+)\n(.*?)(?=\n-- @|\Z)", read("db/statements.sql"), re.S))
+    check("«Сохранить» реквизиты набранные дела не меняет (ключ и индексатор — да, архив — нет)",
+          "archive" not in strip_comments(blocks.get("case_spread_key", "")) and "parish_key" in blocks.get("case_spread_key", ""))
+    check("поведение держит тест крейта",
+          "fn window_cases_by_reqs()" in read("src-tauri/core/src/records.rs"))
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261120_fod_u_vseh_zapisej_goda,
     incident_20261120_mladenec_bez_familii,
     incident_20261120_otkryt_molcha,
     incident_20261120_familiya_materi_posle_slovarya,

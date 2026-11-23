@@ -170,6 +170,16 @@ fn used(conn: &Connection) -> Result<Used, String> {
         }
     }
     {
+        // Текущие реквизиты прихода (задача 16) — занятые: до первой записи
+        // дел нет, и село прихода с карточкой ушло бы в «пункты без записей»
+        // (e2e 23.11.2026, «Борисоглебское»).
+        let r = crate::records::current_reqs(conn)?;
+        for (v, g) in [(&r.archive, "archive"), (&r.church, "church"), (&r.village, "place"),
+                       (&r.uyezd, "uyezd"), (&r.guberniya, "guberniya")] {
+            u.add(g, v.as_deref());
+        }
+    }
+    {
         // Поля карточек пунктов — занятые. Само название пункта карточка не
         // занимает (с 06.11.2026): пункт без записей и дел предлагается к
         // удалению отдельно (`places` в `scan`).
@@ -800,6 +810,11 @@ mod tests {
         conn.execute("UPDATE place SET origin = 'seed' WHERE name = 'Лукино'", []).unwrap();
         let lukino = find(&conn, Some(&others)).unwrap().into_iter().find(|u| u.value == "Лукино").unwrap();
         assert!(lukino.careful && lukino.detail.contains("из поставки"), "пункт прежней поставки (п. 130) — подписан и не отмечен: {lukino:?}");
+        // Задача 16 (e2e 23.11.2026): село текущих реквизитов занято и до
+        // первой записи — дела ещё нет.
+        crate::parish::setting_set(&conn, crate::records::CASE_REQS, r#"{"id":0,"village":"Лукино"}"#).unwrap();
+        assert!(!find(&conn, Some(&others)).unwrap().iter().any(|u| u.value == "Лукино"), "село текущих реквизитов не предлагается");
+        conn.execute("DELETE FROM setting WHERE key = ?1", [crate::records::CASE_REQS]).unwrap();
         assert_eq!(places.iter().find(|u| u.value == "с.Черняное").unwrap().uses, 1, "частота — у пункта");
         assert!(!find(&conn, Some(&others)).unwrap().iter().any(|u| u.group != "Населённые пункты" && u.value == "с.Черняное"),
                 "частота пункта с карточкой — не отдельной строкой");

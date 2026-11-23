@@ -1,6 +1,6 @@
 // Заглавные буквы в ИОФ и слово «имени нет» — src/names.ts. Запуск:
 //   node --experimental-strip-types scripts/test_names.mjs
-import { feminineSurname, maskFragment, onlyFeminineOf, rankForRole, noNameWord, showNoName, titleCase, capFirst, placeCase, NP_TYPES, placeLabel, splitPlaceLabel, stripPlaceType, placeTypeOf, dayMonth } from "../src/names.ts";
+import { feminineSurname, maskFragment, onlyFeminineOf, rankForRole, noNameWord, showNoName, titleCase, capFirst, placeCase, NP_TYPES, placeLabel, splitPlaceLabel, stripPlaceType, placeTypeOf, dayMonth, nameLost } from "../src/names.ts";
 
 let ok = 0, fail = 0;
 function check(input, expected) {
@@ -155,6 +155,16 @@ for (const [raw, want] of [
 }
 const withX = placeTypeOf("х.Ракитин", [...NP_TYPES, "х."]);
 same("тип из пополненного перечня: «х.Ракитин»", withX ? `${withX.type}|${withX.name}` : "-", "х.|Ракитин");
+
+// Имя, видимое в форме, но потерянное разбором (Нинель 23.11.2026, п. 9).
+const P = (f, pa, su, nm) => ({ first_name: f, patronymic: pa, surname: su, name_missing: nm });
+same("потеря: ИОФ есть, разбор пустой", nameLost("Иаков Лебедев", P(null, null, null)), true);
+same("потеря: ИОФ есть, разбора нет", nameLost("Иаков Лебедев", null), true);
+same("не потеря: имя разобрано", nameLost("Иаков Лебедев", P("Иаков", null, "Лебедев")), false);
+same("не потеря: одна фамилия (п. 164)", nameLost("Лебедев", P(null, null, "Лебедев")), false);
+same("не потеря: «***» — имени в книге нет", nameLost("*** Лебедев", P(null, null, "Лебедев", true)), false);
+same("не потеря: «имени нет»", nameLost("нет", P(null, null, null, true)), false);
+same("не потеря: пустое поле", nameLost("  ", P(null, null, null)), false);
 
 console.log(`\nИтог: успешно ${ok}, ошибок ${fail}`);
 process.exit(fail ? 1 : 0);

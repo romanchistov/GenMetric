@@ -282,3 +282,19 @@ export function dayMonth(day: number | null | undefined, month: number | null | 
   const two = (v: number | null | undefined) => (v == null ? "?" : String(v).padStart(2, "0"));
   return `${two(day)}.${two(month)}`;
 }
+
+/**
+ * Имя, видимое в форме, но потерянное разбором (Нинель 23.11.2026, Бэклог
+ * р. 3 п. 9): ИОФ в поле есть, а в разборе нет ни имени, ни отчества, ни
+ * фамилии — сохранение записало бы человека «только званием». Слово «имени
+ * нет» и «***» — не потеря (`name_missing`). Без зависимостей: проверяет
+ * scripts/test_names.mjs.
+ */
+export function nameLost(iof: string, parsed: {
+  first_name?: string | null; patronymic?: string | null; surname?: string | null; name_missing?: boolean;
+} | null): boolean {
+  if (!iof.trim()) return false;
+  if (!parsed) return true;
+  if (parsed.name_missing) return false;
+  return ![parsed.first_name, parsed.patronymic, parsed.surname].some((v) => (v ?? "").trim() !== "");
+}

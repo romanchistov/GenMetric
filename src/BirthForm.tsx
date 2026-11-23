@@ -17,7 +17,7 @@ import { bookMonth, eventMonthFrom, followEvent, monthOnYearChange, NO_WAIT, set
 import { AUTO_RANK_GODPARENT, useParishFlag } from "./flags";
 import { dismissWarn, report, warn } from "./errors";
 import { setClearer, setDirty } from "./dirty";
-import { feminineSurname, maskFragment, rankForRole, titleCase, dayMonth } from "./names";
+import { feminineSurname, maskFragment, nameLost, rankForRole, titleCase, dayMonth } from "./names";
 import type { FormProps } from "./formprops";
 import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
@@ -649,7 +649,10 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     // не дошло — ставим их здесь, иначе в базу легло бы «иван петров».
     const iof = titleCase(p.iof);
     if (iof !== p.iof) return { ...p, iof, parsed: await invoke<Parsed>("parse_iof", { text: iof, nameSurname: nameSurnameNow({ ...p, iof }) }) };
-    if (!p.iof.trim() || p.parsed) return p;
+    // Разбор — всегда заново, из того текста, что сейчас в поле (Нинель
+    // 23.11.2026, п. 9): первая запись после запуска уходила с причтом
+    // «только звание» — готовый разбор у персоны был, но не от её ИОФ.
+    if (!p.iof.trim()) return p;
     const parsed = await invoke<Parsed>("parse_iof", { text: p.iof, nameSurname: nameSurnameNow(p) });
     return { ...p, parsed };
   }
@@ -741,6 +744,16 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
                : "выйдите из поля ИОФ — откроется окно сверки; выберите имя из словаря (свёрнутый блок сначала разверните)");
       return;
     }
+    // Имя видно в форме, а разбор его потерял (Нинель 23.11.2026, п. 9) —
+    // не писать человека «только званием» молча.
+    const lost = ([["отца", father], ["матери", mother], ["восприемника", god1], ["восприемника", god2],
+                   ["восприемника", god3], ["восприемника", god4], ["причта", clergy1], ["причта", clergy2],
+                   ["причта", clergy3]] as [string, Person][]).find(([, p]) => nameLost(p.iof, p.parsed));
+    if (lost) {
+      warn(`Имя ${lost[0]} «${lost[1].iof.trim()}» не разобрано — запись не сохранена`,
+           "чтобы имя не пропало, программа остановилась; нажмите сохранение ещё раз");
+      return;
+    }
     const sexForSave: Sex | null = (parsedChild?.gender as Sex | null | undefined) ?? childSexManual;
     const persons: PersonPayload[] = [{
       role_code: "child",
@@ -768,10 +781,12 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     if (god3.iof.trim()) persons.push(payload("godparent3", 60, god3));
     if (god4.iof.trim()) persons.push(payload("godparent4", 70, god4));
     // Причт пишется в каждую запись: в Excel он стоит в той же строке,
-    // и выгрузка в Familio ждёт его там же.
-    if (clergy1.iof.trim()) persons.push(payload("clergy1", 100, clergy1, "М"));
-    if (clergy2.iof.trim()) persons.push(payload("clergy2", 110, clergy2, "М"));
-    if (clergy3.iof.trim()) persons.push(payload("clergy3", 120, clergy3, "М"));
+    // и выгрузка в Familio ждёт его там же. Звание без имени (запись, где
+    // имя причта потерялось, п. 9) пересохранение не стирает: пометка
+    // «причт без имени» остаётся, пока причт не выберут заново.
+    if (clergy1.iof.trim() || clergy1.rank.trim()) persons.push(payload("clergy1", 100, clergy1, "М"));
+    if (clergy2.iof.trim() || clergy2.rank.trim()) persons.push(payload("clergy2", 110, clergy2, "М"));
+    if (clergy3.iof.trim() || clergy3.rank.trim()) persons.push(payload("clergy3", 120, clergy3, "М"));
 
     // Причт в счёт не идёт: он держится между записями, и по нему нельзя
     // судить, набрал человек запись или нажал «Сохранить» вхолостую.

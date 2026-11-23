@@ -19,7 +19,7 @@ import { focusNextField } from "./focus";
 import NextYear from "./NextYear";
 import { dismissWarn, report, warn } from "./errors";
 import { setClearer, setDirty } from "./dirty";
-import { maskFragment, titleCase, dayMonth } from "./names";
+import { maskFragment, nameLost, titleCase, dayMonth } from "./names";
 import type { FormProps } from "./formprops";
 import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
@@ -550,7 +550,10 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
     // не дошло — ставим их здесь, иначе в базу легло бы «иван петров».
     const iof = titleCase(p.iof);
     if (iof !== p.iof) return { ...p, iof, parsed: await invoke<Parsed>("parse_iof", { text: iof, nameSurname: nameSurnameNow({ ...p, iof }) }) };
-    if (!p.iof.trim() || p.parsed) return p;
+    // Разбор — всегда заново, из того текста, что сейчас в поле (Нинель
+    // 23.11.2026, п. 9): первая запись после запуска уходила с причтом
+    // «только звание» — готовый разбор у персоны был, но не от её ИОФ.
+    if (!p.iof.trim()) return p;
     return { ...p, parsed: await invoke<Parsed>("parse_iof", { text: p.iof, nameSurname: nameSurnameNow(p) }) };
   }
 
@@ -598,6 +601,14 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
              : "выйдите из поля ИОФ — откроется окно сверки и предложит имя из справочника (свёрнутый блок сначала разверните)");
       return;
     }
+    // Имя видно в форме, а разбор его потерял (Нинель 23.11.2026, п. 9) —
+    // не писать человека «только званием» молча.
+    const lost = named.find(([, p]) => nameLost(p.iof, p.parsed));
+    if (lost) {
+      warn(`Имя ${lost[0]} «${lost[1].iof.trim()}» не разобрано — запись не сохранена`,
+           "чтобы имя не пропало, программа остановилась; нажмите сохранение ещё раз");
+      return;
+    }
     if (!d.iof.trim() && !nameless) {
       warn("Запись пустая", "не заполнено имя умершего; если имени нет в книге — отметьте «личность не установлена»");
       return;
@@ -639,7 +650,8 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
     if (r.iof.trim())
       persons.push(payload("deceased_relative", 40, r, { kinship: r.kinship.trim() || null }, kinGender(r.kinship)));
     ws.forEach((w, i) => { if (w.iof.trim()) persons.push(payload(`death_witness${i + 1}`, 60 + i * 10, w)); });
-    cl.forEach((c, i) => { if (c.iof.trim()) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
+    // Звание без имени (п. 9) пересохранение не стирает — пометка остаётся.
+    cl.forEach((c, i) => { if (c.iof.trim() || c.rank.trim()) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
 
     setBusy(true);
     try {

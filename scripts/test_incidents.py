@@ -1052,7 +1052,7 @@ def incident_20261007_otvet_na_sborku_06_10():
     check("правило младенца — не у записи на правке и не поверх звания, тронутого руками",
           "if (editingId !== null || nameless || rankManual.current) return null;" in death)
     check("…и срабатывает при Ctrl+Enter прямо из ИОФ (итог не зависит от клавиши сохранения)",
-          "const babyRank = babyRankFor(d, sex);" in death.split("async function save()", 1)[-1][:2600])
+          "const babyRank = babyRankFor(d, sex);" in death.split("async function save()", 1)[-1][:3400])
     check("подставленное формой звание и НП умершего блок персоны не затирает своей копией",
           "rank: p.rank === prev.rank ? s.rank : p.rank," in death and "place: p.place === prev.place ? s.place : p.place," in death)
     check("НП родственника, подставленный от умершего, не мешает подставить отца выбранного ребёнка",
@@ -2571,7 +2571,34 @@ def incident_20261017_semya_celikom_1():
           '"deceased" if rows[i].patr_n.is_empty()' in family and 'r.role.starts_with("deceased_")' in family)
 
 
+def incident_20261123_prichet_posle_zapuska():
+    """Нинель (Mac) 23.11.2026, Бэклог р. 3 п. 9: после запуска новой версии
+    первые записи «Смертей» с причтом, подставленным с прошлой записи,
+    сохранились с причтом «только звание» — имя, видимое в форме, пропало
+    молча. Пересохранение снимало и звание, и пометку «причт без имени».
+
+    Защита: перед сохранением ИОФ каждой персоны разбирается заново из текста
+    поля (готовый разбор не берётся — он мог быть не от этого текста); имя
+    видно, а разбор пуст — отказ (`nameLost`); звание причта без имени
+    пересохранение не стирает.
+    """
+    for name in ("BirthForm", "MarriageForm", "DeathForm"):
+        form = strip_comments(read(f"src/{name}.tsx"))
+        i = form.find("async function withParsed")
+        body = form[i:i + 1200]
+        check(f"{name}: разбор перед сохранением — всегда заново, не по готовому",
+              i >= 0 and "p.parsed) return p" not in body and "if (!p.iof.trim()) return p;" in body)
+        j = form.find("async function save()")
+        check(f"{name}: сохранение отказывает, если имя видно, а разбор пуст",
+              j >= 0 and "nameLost(p.iof, p.parsed)" in form[j:])
+        check(f"{name}: звание причта без имени пересохранение не стирает",
+              ".rank.trim()) persons.push(payload(" in form or "rank.trim()) persons.push(payload(\"clergy" in form)
+    names = strip_comments(read("src/names.ts"))
+    check("правило «имя потеряно» — в names.ts (его проверяет test_names.mjs)", "export function nameLost(" in names)
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261123_prichet_posle_zapuska,
     incident_20261118_otvet_na_1_0,
     incident_20261118_sprint_165_170,
     incident_20261117_sprint_150_164,

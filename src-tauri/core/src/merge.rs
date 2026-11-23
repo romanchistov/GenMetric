@@ -355,9 +355,28 @@ impl Diff {
     }
 }
 
-const ENTRY_FIELDS: [&str; 6] = ["страница", "счёт м.", "счёт ж.", "дата события", "дата обряда", "примечание записи"];
-const PERSON_FIELDS: [&str; 10] = ["ИОФ", "НП", "звание", "возраст", "причина смерти", "родство", "каким браком",
-                                   "вероисповедание", "девичья фамилия", "примечание"];
+// С 23.11.2026 (Роман, Бэклог р. 3 п. 5: «не понятно что именно было
+// изменено») — и поля, которых раньше в отличиях не было: современное
+// написание, пол, отметка сомнения; возраст — с месяцами, неделями, днями.
+const ENTRY_FIELDS: [&str; 7] = ["страница", "счёт м.", "счёт ж.", "дата события", "дата обряда", "примечание записи",
+                                 "сомнение в записи"];
+const PERSON_FIELDS: [&str; 13] = ["ИОФ", "НП", "звание", "возраст", "причина смерти", "родство", "каким браком",
+                                   "вероисповедание", "девичья фамилия", "примечание", "современное написание", "пол",
+                                   "сомнение"];
+
+/// Сравнение для отличий: как набрано, без лишних пробелов (и в одной
+/// юникод-форме). Регистр и «ё» — отличие: «владимир» → «Владимир» у Олега
+/// пряталось за «отличия в полях, которые здесь не показаны» (п. 5).
+fn squash(v: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    v.nfc().collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Отметка сомнения (JSON-список полей) — словами через запятую.
+fn uncertain_text(v: &Option<String>) -> String {
+    let t = text(v);
+    serde_json::from_str::<Vec<String>>(&t).map(|l| l.join(", ")).unwrap_or(t)
+}
 
 fn entry_value(e: &EntryInput, field: &str) -> String {
     match field {
@@ -366,6 +385,7 @@ fn entry_value(e: &EntryInput, field: &str) -> String {
         "счёт ж." => number(e.no_female),
         "дата события" => date(e.event_day, e.event_month, e.event_year),
         "дата обряда" => date(e.rite_day, e.rite_month, e.rite_year),
+        "сомнение в записи" => uncertain_text(&e.uncertain),
         _ => text(&e.note),
     }
 }
@@ -377,8 +397,18 @@ fn person_value(p: &PersonInput, field: &str) -> String {
         "звание" => text(&p.rank),
         "возраст" => {
             let t = text(&p.age_text);
-            if t.is_empty() { number(p.age_years) } else { t }
+            if !t.is_empty() {
+                return t;
+            }
+            [(p.age_years, "г."), (p.age_months, "мес."), (p.age_weeks, "нед."), (p.age_days, "дн.")].iter()
+                .filter_map(|(v, unit)| v.map(|n| format!("{n} {unit}")))
+                .collect::<Vec<_>>().join(" ")
         }
+        "современное написание" => [&p.first_name_modern, &p.patronymic_modern, &p.surname_modern].iter()
+            .filter_map(|v| v.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+            .collect::<Vec<_>>().join(" "),
+        "пол" => text(&p.gender),
+        "сомнение" => uncertain_text(&p.uncertain),
         "причина смерти" => text(&p.death_cause),
         "родство" => text(&p.kinship),
         "каким браком" => text(&p.marriage_order),
@@ -396,6 +426,7 @@ fn copy_entry_field(to: &mut EntryInput, from: &EntryInput, field: &str) {
         "счёт ж." => to.no_female = from.no_female,
         "дата события" => (to.event_day, to.event_month, to.event_year) = (from.event_day, from.event_month, from.event_year),
         "дата обряда" => (to.rite_day, to.rite_month, to.rite_year) = (from.rite_day, from.rite_month, from.rite_year),
+        "сомнение в записи" => to.uncertain = from.uncertain.clone(),
         _ => to.note = from.note.clone(),
     }
 }
@@ -427,6 +458,13 @@ fn copy_person_field(to: &mut PersonInput, from: &PersonInput, field: &str) {
         "каким браком" => to.marriage_order = from.marriage_order.clone(),
         "вероисповедание" => to.confession = from.confession.clone(),
         "девичья фамилия" => to.maiden_surname = from.maiden_surname.clone(),
+        "современное написание" => {
+            to.first_name_modern = from.first_name_modern.clone();
+            to.patronymic_modern = from.patronymic_modern.clone();
+            to.surname_modern = from.surname_modern.clone();
+        }
+        "пол" => to.gender = from.gender.clone(),
+        "сомнение" => to.uncertain = from.uncertain.clone(),
         _ => to.note = from.note.clone(),
     }
 }
@@ -438,7 +476,7 @@ fn diffs(ours: &EntryInput, theirs: &EntryInput, roles: &HashMap<String, String>
     let mut other = Vec::new();
     for field in ENTRY_FIELDS {
         let (a, b) = (entry_value(ours, field), entry_value(theirs, field));
-        if normalize(&a) != normalize(&b) {
+        if squash(&a) != squash(&b) {
             out.push(Diff { who: String::new(), field, ours: a, theirs: b, role: None });
         }
     }
@@ -460,7 +498,7 @@ fn diffs(ours: &EntryInput, theirs: &EntryInput, roles: &HashMap<String, String>
                 (Some(a), Some(b)) => {
                     for field in PERSON_FIELDS {
                         let (x, y) = (person_value(a, field), person_value(b, field));
-                        if normalize(&x) != normalize(&y) {
+                        if squash(&x) != squash(&y) {
                             out.push(Diff { who: who.clone(), field, ours: x, theirs: y, role: Some((code.clone(), n)) });
                         }
                     }
@@ -816,7 +854,7 @@ fn merge_in_tx(conn: &Connection, src: &Connection, uid: &str, _file: &str) -> R
                 // отметка сомнения): молча её не терять (ревьюер 11.11.2026).
                 let identical = mine.as_ref().is_some_and(|m| fingerprint(m) == fingerprint(&entry));
                 if lines.is_empty() && !identical {
-                    lines.push("отличия — в полях, которые здесь не показаны: пол, современное написание имени, отметка сомнения, части возраста".into());
+                    lines.push("отличия — в полях, которые здесь не показаны (порядок людей в записи)".into());
                 }
                 if lines.is_empty() {
                     // У нас уже так же (поправили сами) — принять молча.
@@ -1241,7 +1279,7 @@ fn open_pieces(conn: &Connection, review_id: i64, ours: &EntryInput, theirs: &En
         }
     }
     if pieces.is_empty() && other.is_empty() && kept.is_empty() && fingerprint(ours) != fingerprint(theirs) {
-        other.push("отличия — в полях, которые здесь не показаны: пол, современное написание имени, отметка сомнения, части возраста".into());
+        other.push("отличия — в полях, которые здесь не показаны (порядок людей в записи)".into());
     }
     Ok((pieces, other))
 }
@@ -1554,12 +1592,13 @@ mod tests {
             num(&ours, "SELECT id FROM review_item WHERE kind = 'merge_deleted' AND done = 0")
         }).unwrap();
         assert!(back_id.restored);
-        // Правка в поле, которого нет в списке отличий (пол), молча не теряется.
+        // Правка пола — с 23.11.2026 своей строкой (Роман, п. 5), а не «в
+        // полях, которые здесь не показаны».
         theirs.execute("UPDATE person_mention SET gender = 'Ж' WHERE role_code = 'child' AND entry_id = 1", []).unwrap();
         let hidden = run(&ours, &theirs, "помощник.sqlite", true).unwrap();
         assert_eq!(hidden.edits, 1, "{hidden:?}");
         let text: String = ours.query_row("SELECT text FROM review_item WHERE kind = 'merge_edit' AND done = 0", [], |r| r.get(0)).unwrap();
-        assert!(text.contains("не показаны"), "{text}");
+        assert!(text.contains("пол: у вас пусто, у помощника «Ж»") && !text.contains("не показаны"), "{text}");
         take(&ours, num(&ours, "SELECT id FROM review_item WHERE kind = 'merge_edit' AND done = 0")).unwrap();
         assert_eq!(num(&ours, "SELECT count(*) FROM person_mention WHERE gender = 'Ж' AND first_name = 'Евпраксия'"), 1);
         assert_eq!(run(&ours, &theirs, "помощник.sqlite", true).unwrap().to_review(), 0);
@@ -1619,6 +1658,34 @@ mod tests {
         drop((ours, theirs));
         let _ = std::fs::remove_file(a_path);
         let _ = std::fs::remove_file(b_path);
+    }
+
+    /// Роман 20.11.2026 (Бэклог р. 3 п. 5): «не понятно что именно было
+    /// изменено» — у Олега «владимир» → «Владимир». Заглавная буква,
+    /// современное написание, сомнение, части возраста — своими строками.
+    #[test]
+    fn hidden_diffs_are_shown() {
+        let ours = birth(1917, "5", 10, false, "Димитрий", ("Николай", "Иванов", "Ермаков"), "");
+        let mut theirs = ours.clone();
+        let roles = HashMap::new();
+        let field_of = |a: &EntryInput, b: &EntryInput| diffs(a, b, &roles).0.iter().map(|d| (d.field, d.ours.clone(), d.theirs.clone())).collect::<Vec<_>>();
+        let father = theirs.persons.iter().position(|p| p.role_code == "father").unwrap();
+        let low = { let mut o = ours.clone(); o.persons[father].first_name = Some("николай".into()); o };
+        assert_eq!(field_of(&low, &theirs), vec![("ИОФ", "николай Иванов Ермаков".to_string(), "Николай Иванов Ермаков".to_string())]);
+        theirs.persons[father].surname_modern = Some("Ермаковъ".into());
+        theirs.persons[father].age_months = Some(3);
+        theirs.uncertain = Some("[\"страница\"]".into());
+        let got = field_of(&ours, &theirs);
+        assert!(got.iter().any(|d| d.0 == "современное написание" && d.2.ends_with("Ермаковъ")), "{got:?}");
+        assert!(got.iter().any(|d| d.0 == "возраст" && d.2 == "3 мес."), "{got:?}");
+        assert!(got.iter().any(|d| d.0 == "сомнение в записи" && d.2 == "страница"), "{got:?}");
+        // «Взять» поле — переносит именно его.
+        let mut mine = ours.clone();
+        copy_person_field(&mut mine.persons[father], &theirs.persons[father], "современное написание");
+        assert_eq!(mine.persons[father].surname_modern.as_deref(), Some("Ермаковъ"));
+        // Лишний пробел — не отличие.
+        let spaced = { let mut o = ours.clone(); o.page = Some(" 5 ".into()); o };
+        assert!(field_of(&spaced, &ours).is_empty());
     }
 
     /// Задача 16 (ревьюер 23.11.2026, Бэклог р. 3 п. 13): у нас 1910 — дело

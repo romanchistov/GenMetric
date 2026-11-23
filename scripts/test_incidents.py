@@ -2693,7 +2693,30 @@ def incident_20261120_fod_u_vseh_zapisej_goda():
           and "fn reqs_pinned_on_old_base()" in read("src-tauri/core/src/records.rs"))
 
 
+def incident_20261120_sliyanie_skrytye_otlichiya():
+    """Роман 20.11.2026, Бэклог р. 3 п. 5: при слиянии с приходом Олега
+    записи «отличия — в полях, которые здесь не показаны»: «даже открыв
+    запись я не понимаю что именно было изначально и что изменилось у
+    Олега». Отличие было в заглавной букве («владимир» → «Владимир»), а
+    сравнение шло через normalize() — без регистра и «ё».
+
+    Защита: отличия сравниваются как набраны (`squash` — только пробелы),
+    в перечне — современное написание, пол, сомнение, части возраста; тест
+    крейта `hidden_diffs_are_shown`.
+    """
+    merge = strip_comments(read("src-tauri/core/src/merge.rs"))
+    i = merge.find("fn diffs(")
+    body = merge[i:i + 2500]
+    check("отличия слияния сравниваются как набраны, не через normalize()",
+          i >= 0 and "squash(&a) != squash(&b)" in body and "squash(&x) != squash(&y)" in body
+          and "normalize(&a) != normalize(&b)" not in body)
+    check("в отличиях — современное написание, пол, сомнение",
+          all(f in merge for f in ('"современное написание"', '"пол"', '"сомнение"', '"сомнение в записи"')))
+    check("поведение держит тест крейта", "fn hidden_diffs_are_shown()" in read("src-tauri/core/src/merge.rs"))
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261120_sliyanie_skrytye_otlichiya,
     incident_20261120_fod_u_vseh_zapisej_goda,
     incident_20261120_mladenec_bez_familii,
     incident_20261120_otkryt_molcha,

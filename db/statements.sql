@@ -1086,7 +1086,7 @@ WITH kid AS (
      WHERE c.role_code = 'child'
 ),
 parent AS (
-    SELECT p.entry_id, p.role_code, p.rank,
+    SELECT p.entry_id, p.role_code, p.rank, nullif(trim(p.surname), '') AS surname,
            (SELECT pl.name FROM place pl WHERE pl.id = p.place_id) AS place,
            (SELECT pl.name_norm FROM place pl WHERE pl.id = p.place_id) AS place_norm,
            trim(coalesce(nullif(trim(p.first_name), ''), '') || coalesce(' ' || nullif(trim(p.patronymic), ''), '') || coalesce(' ' || nullif(trim(p.surname), ''), '')) AS iof
@@ -1097,7 +1097,10 @@ SELECT k.iof, k.gender,
        CASE WHEN f.iof <> '' THEN f.iof WHEN m.iof <> '' THEN m.iof END AS parent,
        CASE WHEN f.iof <> '' THEN f.place ELSE m.place END AS place,
        CASE WHEN f.iof <> '' THEN f.rank ELSE m.rank END AS rank,
-       k.event_day, k.event_month, k.event_year
+       k.event_day, k.event_month, k.event_year,
+       -- Фамилия родителя — для отбора по набранной фамилии (infant_fits, п. 7):
+       -- нет её в записи — ребёнок не отсеивается.
+       CASE WHEN f.iof <> '' THEN f.surname ELSE m.surname END AS parent_surname
   FROM kid k
   LEFT JOIN parent f ON f.entry_id = k.entry_id AND f.role_code = 'father'
   LEFT JOIN parent m ON m.entry_id = k.entry_id AND m.role_code = 'mother'

@@ -650,8 +650,9 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
     if (r.iof.trim())
       persons.push(payload("deceased_relative", 40, r, { kinship: r.kinship.trim() || null }, kinGender(r.kinship)));
     ws.forEach((w, i) => { if (w.iof.trim()) persons.push(payload(`death_witness${i + 1}`, 60 + i * 10, w)); });
-    // Звание без имени (п. 9) пересохранение не стирает — пометка остаётся.
-    cl.forEach((c, i) => { if (c.iof.trim() || c.rank.trim()) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
+    // Звание без имени (п. 9) пересохранение на правке не стирает — пометка
+    // остаётся; в новую запись оно не пишется (ревьюер 23.11.2026).
+    cl.forEach((c, i) => { if (c.iof.trim() || (editingId !== null && c.rank.trim())) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
 
     setBusy(true);
     try {

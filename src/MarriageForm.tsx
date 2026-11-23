@@ -370,8 +370,9 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
       // Порядок — как в role.csv (60…90, 92, 94): причт с 100, пересекаться нельзя.
       persons.push(payload(`witness${i + 1}`, WITNESS_ORDER[i], { ...w, note }));
     });
-    // Звание без имени (п. 9) пересохранение не стирает — пометка остаётся.
-    cl.forEach((c, i) => { if (c.iof.trim() || c.rank.trim()) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
+    // Звание без имени (п. 9) пересохранение на правке не стирает — пометка
+    // остаётся; в новую запись оно не пишется (ревьюер 23.11.2026).
+    cl.forEach((c, i) => { if (c.iof.trim() || (editingId !== null && c.rank.trim())) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
 
     setBusy(true);
     try {

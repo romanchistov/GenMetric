@@ -696,6 +696,21 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       // Ctrl+Enter прямо из ИОФ матери: ухода из поля не было, и фамилию отца
       // ей ещё не дописали — делаем это здесь, тем же правилом (проверяющий
       // 06.10.2026: итог не должен зависеть от того, какой клавишей сохранили).
+      // Замена имени матери по словарю могла прийти, пока шёл разбор выше, и
+      // дописывание фамилии мужа (onIofResolved → motherLeft) идёт или уже
+      // прошло, а здесь мать — прежняя (Ctrl+Enter прямо из поля матери;
+      // стенд s86, 23.11.2026). Дождаться его и взять дописанное.
+      if (motherLeaving.current) {
+        await motherLeaving.current;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      {
+        const pin = surnamePin.current;
+        if (editingId === null && pin && mother.iof.trim() === pin.from) {
+          mother = { ...mother, iof: pin.to, nameSurname: pin.nameSurname || mother.nameSurname,
+                     parsed: await invoke<Parsed>("parse_iof", { text: pin.to, nameSurname: pin.nameSurname || !!mother.nameSurname }) };
+        }
+      }
       const fathers = father.parsed?.surname?.trim();
       if (editingId === null && fathers && needsFathersSurname(mother.parsed)
           && surnameDoneFor.current !== mother.iof.trim()) {
@@ -782,11 +797,13 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     if (god4.iof.trim()) persons.push(payload("godparent4", 70, god4));
     // Причт пишется в каждую запись: в Excel он стоит в той же строке,
     // и выгрузка в Familio ждёт его там же. Звание без имени (запись, где
-    // имя причта потерялось, п. 9) пересохранение не стирает: пометка
-    // «причт без имени» остаётся, пока причт не выберут заново.
-    if (clergy1.iof.trim() || clergy1.rank.trim()) persons.push(payload("clergy1", 100, clergy1, "М"));
-    if (clergy2.iof.trim() || clergy2.rank.trim()) persons.push(payload("clergy2", 110, clergy2, "М"));
-    if (clergy3.iof.trim() || clergy3.rank.trim()) persons.push(payload("clergy3", 120, clergy3, "М"));
+    // имя причта потерялось, п. 9) пересохранение на правке не стирает:
+    // пометка «причт без имени» остаётся, пока причт не выберут заново. В
+    // новую запись звание без имени не пишется (ревьюер 23.11.2026: стёртое
+    // в развёрнутом причте имя оставляло звание на все следующие записи).
+    if (clergy1.iof.trim() || (editingId !== null && clergy1.rank.trim())) persons.push(payload("clergy1", 100, clergy1, "М"));
+    if (clergy2.iof.trim() || (editingId !== null && clergy2.rank.trim())) persons.push(payload("clergy2", 110, clergy2, "М"));
+    if (clergy3.iof.trim() || (editingId !== null && clergy3.rank.trim())) persons.push(payload("clergy3", 120, clergy3, "М"));
 
     // Причт в счёт не идёт: он держится между записями, и по нему нельзя
     // судить, набрал человек запись или нажал «Сохранить» вхолостую.

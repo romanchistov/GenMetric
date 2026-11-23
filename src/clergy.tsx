@@ -57,7 +57,9 @@ export function ClergyProvider({ children }: { children: React.ReactNode }) {
         for (const r of rows) {
           const i = idx[r.role_code];
           if (i !== undefined && r.iof.trim())
-            setAt(i, (p) => (p.iof.trim() ? p : { ...p, iof: r.iof, rank: r.rank ?? "", note: r.note ?? "",
+            // parsed: null — прежний разбор был от пустой строки, не от этого
+            // ИОФ (ревьюер 23.11.2026, кандидат в причину п. 9).
+            setAt(i, (p) => (p.iof.trim() ? p : { ...p, iof: r.iof, parsed: null, rank: r.rank ?? "", note: r.note ?? "",
                                                    nameSurname: !!r.name_surname }));
         }
         if (rows.length > 0) setSavedTimes((n) => n + 1); // свернуть заполненный причт

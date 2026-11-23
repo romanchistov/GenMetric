@@ -1039,6 +1039,9 @@ struct InfantHint {
     rank: Option<String>,
     /// Дата рождения «05.01.1886» — чтобы различать тёзок.
     born: Option<String>,
+    /// Фамилия родителя — только для отбора по набранной фамилии (п. 7).
+    #[serde(skip)]
+    parent_surname: Option<String>,
 }
 
 /// Дети из записей о рождении этого дела по началу имени — каждый отдельной
@@ -1095,12 +1098,13 @@ fn suggest_infant(app: State<App>, prefix: String, limit: Option<i64>,
                     // Только год — без «??.??.»: так бывает у записей без даты.
                     born: y.map(|y| if d.is_none() && mo.is_none() { y.to_string() }
                                     else { format!("{}.{}.{y}", part(d), part(mo)) }),
+                    parent_surname: r.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
         let all = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
         Ok(all.into_iter()
-            .filter(|h| genmetric_core::infant_fits(&prefix, &h.iof, h.parent.as_deref()))
+            .filter(|h| genmetric_core::infant_fits(&prefix, &h.iof, h.parent.as_deref(), h.parent_surname.as_deref()))
             .take(limit as usize)
             .collect())
     })

@@ -41,7 +41,7 @@ export default function FindReplaceBlock({ onOpenEntry }: { onOpenEntry: (sectio
   const [sure, setSure] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  /** «Открыть» не сработало — есть несохранённое: строка отказа под этой записью. */
+  /** «Открыть» не сработало — есть несохранённое: строка отказа под этой строкой (номер строки). */
   const [refused, setRefused] = useState<{ id: number; forms: string[] } | null>(null);
 
   async function look(q = query, f = field) {
@@ -145,7 +145,7 @@ export default function FindReplaceBlock({ onOpenEntry }: { onOpenEntry: (sectio
                     <button type="button" className="linkish" onClick={() => {
                       const forms = dirtyForms();
                       if (forms.length) {
-                        setRefused({ id: h.entry_id, forms });
+                        setRefused({ id: i, forms });
                         return;
                       }
                       setRefused(null);
@@ -155,7 +155,7 @@ export default function FindReplaceBlock({ onOpenEntry }: { onOpenEntry: (sectio
                     </button>
                   </td>
                 </tr>
-                {refused?.id === h.entry_id && (
+                {refused?.id === i && (
                   <tr><td colSpan={3}>
                     <OpenRefused forms={refused.forms} onOpen={() => { setRefused(null); onOpenEntry(h.section, h.entry_id); }} />
                   </td></tr>

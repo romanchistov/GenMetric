@@ -226,11 +226,13 @@ pub(crate) fn seed_missing(what: &str) {
 /// Меньше трёх слов — подходит (фамилию ещё не набрали). Подходит и строка,
 /// найденная иначе: ИОФ ребёнка начинается с набранного, или ИОФ родителя —
 /// со всего после имени («Мария Иван Петров» — родитель «Иван Петров …»).
-/// Иначе фамилия родителя (последнее слово его ИОФ) или её женская форма
+/// Иначе фамилия родителя (колонка записи, не последнее слово ИОФ: у 27 из
+/// 38 отцов Романа фамилии нет — ревьюер 23.11.2026) или её женская форма
 /// (`wife_surnames::feminine`) начинается с набранной: «Ермакова»,
-/// «Ермаков», «Ермак» — отец «Ермаков». Сравнение — по `normalize_name`
-/// каждого слова (регистр, «ё», дореформенные буквы, конечный «ъ»).
-pub fn infant_fits(typed: &str, child_iof: &str, parent_iof: Option<&str>) -> bool {
+/// «Ермаков», «Ермак» — отец «Ермаков». Фамилии у родителя нет — ребёнок
+/// остаётся (судить не по чему). Сравнение — по `normalize_name` каждого
+/// слова (регистр, «ё», дореформенные буквы, конечный «ъ»).
+pub fn infant_fits(typed: &str, child_iof: &str, parent_iof: Option<&str>, parent_surname: Option<&str>) -> bool {
     let norm = |t: &str| t.split_whitespace().map(text::normalize_name).collect::<Vec<_>>().join(" ");
     let words: Vec<&str> = typed.split_whitespace().collect();
     if words.len() < 3 {
@@ -243,9 +245,9 @@ pub fn infant_fits(typed: &str, child_iof: &str, parent_iof: Option<&str>) -> bo
     if !parent.is_empty() && norm(parent).starts_with(&norm(&words[1..].join(" "))) {
         return true;
     }
-    let Some(surname) = parent.split_whitespace().last() else { return false };
-    if parent.split_whitespace().count() < 2 {
-        return false; // одно имя родителя — фамилии нет
+    let surname = parent_surname.unwrap_or("").trim();
+    if surname.is_empty() {
+        return true;
     }
     let want = text::normalize_name(words[2]);
     [text::normalize_name(surname), text::normalize_name(&wife_surnames::feminine(surname))]
@@ -260,23 +262,26 @@ mod tests {
     #[test]
     fn infant_by_surname() {
         let t = "Елена Федорова Ермакова";
-        assert!(!infant_fits(t, "Елена", Some("Феодор Михайлов Туев")));
-        assert!(!infant_fits(t, "Елена", Some("Феодор Андреев Вяткин")));
-        assert!(infant_fits(t, "Елена", Some("Феодор Иванов Ермаков")));
-        assert!(infant_fits("Елена Федорова Ермак", "Елена", Some("Феодор Иванов Ермаковъ")));
+        let f = |iof: &'static str, sur: Option<&'static str>| (Some(iof), sur);
+        let fits = |typed: &str, (p, s): (Option<&str>, Option<&str>)| infant_fits(typed, "Елена", p, s);
+        assert!(!fits(t, f("Феодор Михайлов Туев", Some("Туев"))));
+        assert!(!fits(t, f("Феодор Андреев Вяткин", Some("Вяткин"))));
+        assert!(fits(t, f("Феодор Иванов Ермаков", Some("Ермаков"))));
+        assert!(fits("Елена Федорова Ермак", f("Феодор Иванов Ермаковъ", Some("Ермаковъ"))));
         // «ё» = «е».
-        assert!(infant_fits("Елена Федорова Ер", "Елена", Some("Феодор Иванов Ёрмаков")));
-        assert!(infant_fits("Елена Федорова Ер", "Елена", Some("Феодор Иванов Ермаков")));
+        assert!(fits("Елена Федорова Ер", f("Феодор Иванов Ёрмаков", Some("Ёрмаков"))));
         // Двух слов мало — как раньше.
-        assert!(infant_fits("Елена Федорова", "Елена", Some("Феодор Михайлов Туев")));
+        assert!(fits("Елена Федорова", f("Феодор Михайлов Туев", Some("Туев"))));
         // Нет отца — мать (родитель в строке подсказки — она).
-        assert!(infant_fits("Иван Марьин Сидоров", "Иван", Some("Мария Петрова Сидорова")));
+        assert!(infant_fits("Иван Марьин Сидоров", "Иван", Some("Мария Петрова Сидорова"), Some("Сидорова")));
         // «Мария Иван Петров» — второе слово имя родителя, а не отчество.
-        assert!(infant_fits("Мария Иван Петров", "Мария", Some("Иван Петров Сидоров")));
+        assert!(infant_fits("Мария Иван Петров", "Мария", Some("Иван Петров Сидоров"), Some("Сидоров")));
         // ИОФ ребёнка уже полное и совпадает — подходит.
-        assert!(infant_fits(t, "Елена Федорова Ермакова", Some("Феодор Михайлов Туев")));
-        // Родитель одним именем — фамилии нет, не подходит.
-        assert!(!infant_fits(t, "Елена", Some("Феодор")));
+        assert!(infant_fits(t, "Елена Федорова Ермакова", Some("Феодор Михайлов Туев"), Some("Туев")));
+        // У отца в записи нет фамилии («Феодор Иванов» — имя и отчество):
+        // судить не по чему, ребёнок остаётся (ревьюер 23.11.2026).
+        assert!(fits(t, f("Феодор Иванов", None)));
+        assert!(fits(t, f("Феодор", None)));
     }
 
     /// Паника в команде окна: ошибка вместо закрытой программы, начатое

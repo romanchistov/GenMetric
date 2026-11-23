@@ -2593,8 +2593,10 @@ def incident_20261123_prichet_posle_zapuska():
         j = form.find("async function save()")
         check(f"{name}: сохранение отказывает, если имя видно, а разбор пуст",
               j >= 0 and "nameLost(p.iof, p.parsed)" in form[j:])
-        check(f"{name}: звание причта без имени пересохранение не стирает",
-              ".rank.trim()) persons.push(payload(" in form or "rank.trim()) persons.push(payload(\"clergy" in form)
+        # Только на правке: в новую запись звание без имени не пишется
+        # (ревьюер 23.11.2026 — стёртое имя оставляло звание на все записи).
+        check(f"{name}: звание причта без имени пересохранение на правке не стирает, в новую запись не пишет",
+              "(editingId !== null && c.rank.trim())" in form or "(editingId !== null && clergy1.rank.trim())" in form)
     names = strip_comments(read("src/names.ts"))
     check("правило «имя потеряно» — в names.ts (его проверяет test_names.mjs)", "export function nameLost(" in names)
 
@@ -2651,6 +2653,8 @@ def incident_20261120_mladenec_bez_familii():
     i = main.find("fn suggest_infant(")
     check("подсказка младенца отбирает строки по фамилии (infant_fits)",
           i >= 0 and "genmetric_core::infant_fits(&prefix" in main[i:i + 4000])
+    check("…по фамилии родителя из записи, а не по последнему слову его ИОФ",
+          "h.parent_surname.as_deref()" in main and "AS parent_surname" in read("db/statements.sql"))
     lib = read("src-tauri/core/src/lib.rs")
     check("правило фамилии младенца — в крейте, с тестом",
           "pub fn infant_fits(" in lib and "fn infant_by_surname()" in lib)

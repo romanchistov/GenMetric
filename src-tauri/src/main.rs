@@ -1057,6 +1057,9 @@ fn suggest_infant(app: State<App>, prefix: String, limit: Option<i64>,
     };
     let place = place.as_deref().map(normalize).filter(|p| !p.is_empty());
     let limit = limit.unwrap_or(6).clamp(1, 50);
+    // Набрана фамилия — строки отбираются ещё и по ней (`infant_fits`, п. 7):
+    // берём с запасом, чтобы после отбора осталось сколько просили.
+    let fetch = if prefix.split_whitespace().count() >= 3 { 50 } else { limit };
     with_conn(&app, &format!("Поиск младенца «{prefix}»"), |conn| {
         // «Александр Васильев»: второе слово — отчество, отец — Василий (п. 172).
         let fathers = match prefix.trim().split_once(char::is_whitespace) {
@@ -1081,7 +1084,7 @@ fn suggest_infant(app: State<App>, prefix: String, limit: Option<i64>,
         let mut stmt = conn.prepare(&statement("infant_suggest")?).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::named_params! {
-                ":prefix": pattern, ":gender": gender, ":limit": limit, ":year": year,
+                ":prefix": pattern, ":gender": gender, ":limit": fetch, ":year": year,
                 ":name": name, ":parent": parent, ":place": place, ":fathers": fathers,
             }, |r| {
                 let (d, mo, y): (Option<i64>, Option<i64>, Option<i64>) = (r.get(6)?, r.get(7)?, r.get(8)?);
@@ -1095,7 +1098,11 @@ fn suggest_infant(app: State<App>, prefix: String, limit: Option<i64>,
                 })
             })
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        let all = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        Ok(all.into_iter()
+            .filter(|h| genmetric_core::infant_fits(&prefix, &h.iof, h.parent.as_deref()))
+            .take(limit as usize)
+            .collect())
     })
 }
 

@@ -217,9 +217,67 @@ pub(crate) fn seed_missing(what: &str) {
     eprintln!("нет resources/seed.sqlite — {what}");
 }
 
+/// Подходит ли ребёнок из записи о рождении к набранному в ИОФ умершего —
+/// по третьему слову, фамилии (Роман 20.11.2026, Бэклог р. 3 п. 8 → п. 7:
+/// «вбито полностью ИОФ, но программа предлагает в подсказке персон с тем
+/// ИО, но другой фамилией»). Запрос `infant_suggest` отбирает по имени и по
+/// отчеству → имени отца; фамилию он не смотрит — её смотрит это правило.
+///
+/// Меньше трёх слов — подходит (фамилию ещё не набрали). Подходит и строка,
+/// найденная иначе: ИОФ ребёнка начинается с набранного, или ИОФ родителя —
+/// со всего после имени («Мария Иван Петров» — родитель «Иван Петров …»).
+/// Иначе фамилия родителя (последнее слово его ИОФ) или её женская форма
+/// (`wife_surnames::feminine`) начинается с набранной: «Ермакова»,
+/// «Ермаков», «Ермак» — отец «Ермаков». Сравнение — по `normalize_name`
+/// каждого слова (регистр, «ё», дореформенные буквы, конечный «ъ»).
+pub fn infant_fits(typed: &str, child_iof: &str, parent_iof: Option<&str>) -> bool {
+    let norm = |t: &str| t.split_whitespace().map(text::normalize_name).collect::<Vec<_>>().join(" ");
+    let words: Vec<&str> = typed.split_whitespace().collect();
+    if words.len() < 3 {
+        return true;
+    }
+    if norm(child_iof).starts_with(&norm(typed)) {
+        return true;
+    }
+    let parent = parent_iof.unwrap_or("").trim();
+    if !parent.is_empty() && norm(parent).starts_with(&norm(&words[1..].join(" "))) {
+        return true;
+    }
+    let Some(surname) = parent.split_whitespace().last() else { return false };
+    if parent.split_whitespace().count() < 2 {
+        return false; // одно имя родителя — фамилии нет
+    }
+    let want = text::normalize_name(words[2]);
+    [text::normalize_name(surname), text::normalize_name(&wife_surnames::feminine(surname))]
+        .iter().any(|have| have.starts_with(&want))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{familio_search_url, guarded, guarded_db, rank_inside_pattern, suggest_sql};
+    use super::{familio_search_url, guarded, guarded_db, infant_fits, rank_inside_pattern, suggest_sql};
+
+    /// Подсказка младенца смотрит фамилию (Роман 20.11.2026, п. 7).
+    #[test]
+    fn infant_by_surname() {
+        let t = "Елена Федорова Ермакова";
+        assert!(!infant_fits(t, "Елена", Some("Феодор Михайлов Туев")));
+        assert!(!infant_fits(t, "Елена", Some("Феодор Андреев Вяткин")));
+        assert!(infant_fits(t, "Елена", Some("Феодор Иванов Ермаков")));
+        assert!(infant_fits("Елена Федорова Ермак", "Елена", Some("Феодор Иванов Ермаковъ")));
+        // «ё» = «е».
+        assert!(infant_fits("Елена Федорова Ер", "Елена", Some("Феодор Иванов Ёрмаков")));
+        assert!(infant_fits("Елена Федорова Ер", "Елена", Some("Феодор Иванов Ермаков")));
+        // Двух слов мало — как раньше.
+        assert!(infant_fits("Елена Федорова", "Елена", Some("Феодор Михайлов Туев")));
+        // Нет отца — мать (родитель в строке подсказки — она).
+        assert!(infant_fits("Иван Марьин Сидоров", "Иван", Some("Мария Петрова Сидорова")));
+        // «Мария Иван Петров» — второе слово имя родителя, а не отчество.
+        assert!(infant_fits("Мария Иван Петров", "Мария", Some("Иван Петров Сидоров")));
+        // ИОФ ребёнка уже полное и совпадает — подходит.
+        assert!(infant_fits(t, "Елена Федорова Ермакова", Some("Феодор Михайлов Туев")));
+        // Родитель одним именем — фамилии нет, не подходит.
+        assert!(!infant_fits(t, "Елена", Some("Феодор")));
+    }
 
     /// Паника в команде окна: ошибка вместо закрытой программы, начатое
     /// изменение отменено, соединение работает дальше.

@@ -2637,7 +2637,27 @@ def incident_20261120_otkryt_molcha():
           "clearDirtyForms()" in strip_comments(read("src/OpenRefused.tsx")))
 
 
+def incident_20261120_mladenec_bez_familii():
+    """Роман 20.11.2026, Бэклог р. 3 п. 7: «Елена Федорова Ермакова» набрано
+    целиком, а подсказка младенца предлагает дочерей Феодора Туева и
+    Феодора Вяткина — «вбито полностью ИОФ, но программа предлагает в
+    подсказке персон с тем ИО, но другой фамилией». Запрос отбирал по имени
+    и отчеству → имени отца, третье слово не смотрел.
+
+    Защита: строки подсказки отбираются правилом `infant_fits` (крейт, тест
+    `infant_by_surname`); копия — в шиме стенда (_стенд/s87.mjs).
+    """
+    main = strip_comments(read("src-tauri/src/main.rs"))
+    i = main.find("fn suggest_infant(")
+    check("подсказка младенца отбирает строки по фамилии (infant_fits)",
+          i >= 0 and "genmetric_core::infant_fits(&prefix" in main[i:i + 4000])
+    lib = read("src-tauri/core/src/lib.rs")
+    check("правило фамилии младенца — в крейте, с тестом",
+          "pub fn infant_fits(" in lib and "fn infant_by_surname()" in lib)
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261120_mladenec_bez_familii,
     incident_20261120_otkryt_molcha,
     incident_20261120_familiya_materi_posle_slovarya,
     incident_20261123_prichet_posle_zapuska,

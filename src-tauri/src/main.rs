@@ -22,7 +22,7 @@ mod scanserve;
 mod windows;
 
 use genmetric_core::parish;
-use genmetric_core::records::{extend_lookup, parse_iof_with, save_case, save_entry, Case, CaseSaved, EntryInput, ParsedIof, Saved};
+use genmetric_core::records::{extend_lookup, parse_iof_with, save_case, Case, CaseSaved, EntryInput, ParsedIof, Saved};
 use genmetric_core::statement;
 use genmetric_core::text::{normalize, normalize_name, normalize_words};
 
@@ -870,8 +870,22 @@ fn case_delete(app: State<App>, year: i64) -> Result<bool, String> {
 
 /// Сохранение записи со всеми упомянутыми персонами — genmetric_core::records.
 #[tauri::command]
-fn entry_save(app: State<App>, entry: EntryInput) -> Result<Saved, String> {
-    with_conn_shared(&app, "Сохранение записи", |conn| save_entry(conn, &entry))
+fn entry_save(app: State<App>, entry: EntryInput, reqs: Option<Case>) -> Result<Saved, String> {
+    // Дело записи — год книги + реквизиты (задача 16): новая — текущие
+    // реквизиты прихода, правка — свои, `reqs` — «изменить» в записи.
+    with_conn_shared(&app, "Сохранение записи", |conn| genmetric_core::records::save_entry_window(conn, &entry, reqs.as_ref()))
+}
+
+/// Текущие реквизиты прихода — экран «Дело» (задача 16).
+#[tauri::command]
+fn case_reqs_get(app: State<App>) -> Result<Case, String> {
+    with_conn(&app, "Чтение реквизитов", genmetric_core::records::current_reqs)
+}
+
+/// «Сохранить» на «Деле»: только текущие реквизиты; набранное не меняется.
+#[tauri::command]
+fn case_reqs_save(app: State<App>, reqs: Case) -> Result<(), String> {
+    with_conn_shared(&app, "Сохранение реквизитов", |conn| genmetric_core::records::set_current_reqs(conn, &reqs))
 }
 
 /// Подсказка персонами: ИОФ вместе с населённым пунктом и званием.
@@ -3030,6 +3044,8 @@ fn main() {
             review_count,
             review_done,
             entry_save,
+            case_reqs_get,
+            case_reqs_save,
             entry_list,
             entry_load,
             last_clergy,

@@ -747,6 +747,164 @@ pub fn case_for_year(conn: &Connection, year: i64) -> Result<(i64, bool), String
     }
 }
 
+/// Ключ настройки прихода: текущие реквизиты (задача 16).
+pub const CASE_REQS: &str = "case_reqs";
+
+/// Дело по номеру — реквизиты и год.
+pub fn case_by_id(conn: &Connection, id: i64) -> Result<Option<Case>, String> {
+    conn.query_row(&statement("case_by_id")?, rusqlite::named_params! { ":id": id }, |r| Ok(Case {
+        id: r.get(0)?, archive: r.get(1)?, fond: r.get(2)?, opis: r.get(3)?, delo: r.get(4)?,
+        church: r.get(5)?, village: r.get(6)?, uyezd: r.get(7)?, guberniya: r.get(8)?,
+        year: r.get(9)?, indexer: r.get(10)?,
+    })).optional().map_err(|e| e.to_string())
+}
+
+/// Текущие реквизиты прихода (задача 16, Роман 23.11.2026): то, что набрано
+/// на «Деле»; меняются только руками и действуют на новые записи. Настройки
+/// ещё нет (база до задачи 16) — реквизиты дела, с которым работали (дело
+/// последней записи, `case_current`); нет и его — пусто. Год и номер — 0/None:
+/// это не дело, а образец.
+pub fn current_reqs(conn: &Connection) -> Result<Case, String> {
+    if let Some(json) = crate::parish::setting_get(conn, CASE_REQS)? {
+        if let Ok(mut c) = serde_json::from_str::<Case>(&json) {
+            c.id = 0;
+            c.year = None;
+            return Ok(c);
+        }
+    }
+    let row = conn.query_row(&statement("case_current")?, rusqlite::named_params! { ":year": None::<i64> }, |r| Ok(Case {
+        id: 0, archive: r.get(1)?, fond: r.get(2)?, opis: r.get(3)?, delo: r.get(4)?,
+        church: r.get(5)?, village: r.get(6)?, uyezd: r.get(7)?, guberniya: r.get(8)?,
+        year: None, indexer: r.get(10)?,
+    })).optional().map_err(|e| e.to_string())?;
+    Ok(row.unwrap_or_default())
+}
+
+/// «Сохранить» на «Деле» (задача 16): только текущие реквизиты — уже
+/// набранные записи и их дела не меняются. Ключ прихода и индексатор — на
+/// все дела (как прежнее «Сохранить дело»); сменился ключ (другая церковь,
+/// село) — частоты «по приходу» переходят под новый (п. 139). Архив,
+/// церковь, уезд, губерния — в справочники.
+pub fn set_current_reqs(conn: &Connection, reqs: &Case) -> Result<(), String> {
+    conn.execute_batch("SAVEPOINT case_reqs").map_err(|e| e.to_string())?;
+    match set_current_reqs_in(conn, reqs) {
+        Ok(()) => conn.execute_batch("RELEASE case_reqs").map_err(|e| e.to_string()),
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK TO case_reqs; RELEASE case_reqs");
+            Err(err)
+        }
+    }
+}
+
+fn set_current_reqs_in(conn: &Connection, reqs: &Case) -> Result<(), String> {
+    let e = |e: rusqlite::Error| e.to_string();
+    let clean = |v: &Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let r = Case {
+        id: 0, archive: clean(&reqs.archive), fond: clean(&reqs.fond), opis: clean(&reqs.opis), delo: clean(&reqs.delo),
+        church: clean(&reqs.church), village: clean(&reqs.village), uyezd: clean(&reqs.uyezd),
+        guberniya: clean(&reqs.guberniya), year: None, indexer: clean(&reqs.indexer),
+    };
+    let parish = r.parish_key();
+    let old_keys: Vec<String> = {
+        let mut stmt = conn.prepare(&statement("case_parish_keys")?).map_err(e)?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(e)?;
+        rows.collect::<Result<_, _>>().map_err(e)?
+    };
+    conn.execute(&statement("case_spread_key")?, rusqlite::named_params! {
+        ":parish_key": parish, ":indexer": r.indexer,
+    }).map_err(e)?;
+    for old in old_keys.iter().filter(|k| **k != parish) {
+        move_parish_stats(conn, old, &parish)?;
+    }
+    for (kind, value) in [("archive", &r.archive), ("church", &r.church),
+                          ("uyezd", &r.uyezd), ("guberniya", &r.guberniya)] {
+        if let Some(v) = value.as_deref() {
+            remember(conn, kind, v, 0, &parish)?;
+        }
+    }
+    let json = serde_json::to_string(&r).map_err(|e| e.to_string())?;
+    crate::parish::setting_set(conn, CASE_REQS, &json)
+}
+
+/// Дело года с этими реквизитами; нет — заводится (вторым значением — true).
+/// Ключ прихода нового дела — общий (первого дела), индексатор — из
+/// реквизитов.
+pub fn case_for_reqs(conn: &Connection, year: i64, r: &Case) -> Result<(i64, bool), String> {
+    let e = |e: rusqlite::Error| e.to_string();
+    let t = |v: &Option<String>| v.as_deref().map(str::trim).unwrap_or("").to_string();
+    let found: Option<i64> = conn.query_row(&statement("case_find_reqs")?, rusqlite::named_params! {
+        ":year": year, ":archive": t(&r.archive), ":fond": t(&r.fond), ":opis": t(&r.opis), ":delo": t(&r.delo),
+        ":church": t(&r.church), ":village": t(&r.village), ":uyezd": t(&r.uyezd), ":guberniya": t(&r.guberniya),
+    }, |row| row.get(0)).optional().map_err(e)?;
+    if let Some(id) = found {
+        return Ok((id, false));
+    }
+    let id: i64 = conn.query_row(&statement("case_new_id")?, [], |row| row.get(0)).map_err(e)?;
+    let key: String = conn
+        .query_row(&statement("case_parish_key")?, rusqlite::named_params! { ":id": 0 }, |row| row.get::<_, Option<String>>(0))
+        .optional().map_err(e)?.flatten().filter(|k| !k.is_empty())
+        .unwrap_or_else(|| r.parish_key());
+    let nz = |v: &Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    conn.execute(&statement("case_upsert")?, rusqlite::named_params! {
+        ":id": id, ":archive": nz(&r.archive), ":fond": nz(&r.fond), ":opis": nz(&r.opis), ":delo": nz(&r.delo),
+        ":church": nz(&r.church), ":village": nz(&r.village), ":uyezd": nz(&r.uyezd), ":guberniya": nz(&r.guberniya),
+        ":year": year, ":parish_key": key, ":indexer": nz(&r.indexer),
+    }).map_err(e)?;
+    Ok((id, true))
+}
+
+/// Сохранение записи из окна (задача 16). Дело записи — год книги + реквизиты:
+/// новая запись — текущие реквизиты прихода; запись на правке — свои
+/// реквизиты (дело, где лежит), а с `reqs` («изменить» в записи) — эти;
+/// правка без смены года и реквизитов — дело прежнее. Ушла последняя запись
+/// из прежнего дела — оно убирается (по номеру). Запись без года — как
+/// раньше (`save_entry`).
+pub fn save_entry_window(conn: &Connection, entry: &EntryInput, reqs: Option<&Case>) -> Result<Saved, String> {
+    let Some(year) = entry.rite_year.or(entry.event_year) else {
+        return save_entry(conn, entry);
+    };
+    let e = |e: rusqlite::Error| e.to_string();
+    conn.execute_batch("BEGIN").map_err(e)?;
+    let run = || -> Result<Saved, String> {
+        let stored: Option<(i64, Option<i64>)> = match entry.id {
+            Some(id) => conn.query_row(&statement("entry_place_in_book")?, rusqlite::named_params! { ":id": id },
+                                       |r| Ok((r.get(0)?, r.get(1)?))).optional().map_err(e)?,
+            None => None,
+        };
+        let (case_id, created) = match (stored, reqs) {
+            (Some((was, y)), None) if y == Some(year) => (was, false),
+            (Some((was, _)), None) => {
+                let own = case_by_id(conn, was)?.unwrap_or_default();
+                case_for_reqs(conn, year, &own)?
+            }
+            (_, Some(r)) => case_for_reqs(conn, year, r)?,
+            (None, None) => case_for_reqs(conn, year, &current_reqs(conn)?)?,
+        };
+        let parish: String = conn
+            .query_row(&statement("case_parish_key")?, rusqlite::named_params! { ":id": case_id },
+                       |r| r.get::<_, Option<String>>(0))
+            .optional().map_err(e)?.flatten().unwrap_or_default();
+        let mut saved = save_entry_in_case(conn, entry, &parish, Some(case_id))?;
+        if created {
+            saved.new_case_year = Some(year);
+        }
+        if let Some((was, _)) = stored.filter(|(was, _)| *was != case_id) {
+            conn.execute(&statement("case_drop_if_empty")?, rusqlite::named_params! { ":id": was }).map_err(e)?;
+        }
+        Ok(saved)
+    };
+    match run() {
+        Ok(saved) => {
+            conn.execute_batch("COMMIT").map_err(e)?;
+            Ok(saved)
+        }
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(err)
+        }
+    }
+}
+
 pub fn save_entry(conn: &Connection, entry: &EntryInput) -> Result<Saved, String> {
     let parish: String = conn
         .query_row(&statement("case_parish_key")?, rusqlite::named_params! { ":id": entry.case_id },
@@ -773,6 +931,13 @@ pub fn save_entry(conn: &Connection, entry: &EntryInput) -> Result<Saved, String
 /// записей одной общей (спека 2026-10-02, п. 4.5). `parish` — ключ прихода
 /// для частот подсказок.
 pub fn save_entry_in_tx(conn: &Connection, entry: &EntryInput, parish: &str) -> Result<Saved, String> {
+    save_entry_in_case(conn, entry, parish, None)
+}
+
+/// То же, но дело может назначить вызывающий (`forced`) — сохранение из окна
+/// по текущим реквизитам (`save_entry_window`, задача 16). Импорт, слияние и
+/// замена зовут без него — их правило «дело года» не меняется.
+fn save_entry_in_case(conn: &Connection, entry: &EntryInput, parish: &str, forced: Option<i64>) -> Result<Saved, String> {
     {
         // Запись привязывается к делу своего года книги (год обряда, у браков
         // — год венчания), а не к тому, что прислала форма: дело — на год.
@@ -788,6 +953,7 @@ pub fn save_entry_in_tx(conn: &Connection, entry: &EntryInput, parish: &str) -> 
             None => None,
         };
         let (case_id, new_case_year) = match year_now {
+            _ if forced.is_some() => (forced.unwrap_or(entry.case_id), None),
             Some(year) if stored.is_some_and(|(_, y)| y == Some(year)) => (stored.map(|s| s.0).unwrap_or(entry.case_id), None),
             Some(year) => {
                 let (id, created) = case_for_year(conn, year)?;
@@ -1253,6 +1419,72 @@ mod tests {
 
     use super::*;
     use std::path::Path;
+
+    /// Задача 16 (Роман 23.11.2026): реквизиты — текущие, запись ложится в
+    /// дело «год + реквизиты»; смена ФОД не трогает набранное; правка с
+    /// «изменить» переносит запись, пустое прежнее дело убирается.
+    #[test]
+    fn window_cases_by_reqs() {
+        let seed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/seed.sqlite");
+        if !seed.exists() {
+            crate::seed_missing("тест текущих реквизитов пропущен");
+            return;
+        }
+        let path = std::env::temp_dir().join(format!("genmetric-reqs-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::copy(&seed, &path).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        let reqs = |delo: &str| Case {
+            id: 0, archive: Some("ГАКО".into()), fond: Some("56".into()), opis: Some("6".into()),
+            delo: Some(delo.into()), church: Some("Христорождественская".into()), village: Some("Борисоглебское".into()),
+            uyezd: None, guberniya: None, year: None, indexer: Some("Роман".into()),
+        };
+        let entry = |id: Option<i64>, section: i64, year: i64, no: i64| EntryInput {
+            id, case_id: 0, section, page: None, no_male: Some(no), no_female: None,
+            event_day: Some(1), event_month: Some(2), event_year: Some(year),
+            rite_day: None, rite_month: None, rite_year: None, note: None, uncertain: None, scan_file: None, persons: vec![],
+        };
+        let delo_of = |entry_id: i64| -> String {
+            conn.query_row("SELECT c.delo FROM entry e JOIN mk_case c ON c.id = e.case_id WHERE e.id = ?1", [entry_id], |r| r.get(0)).unwrap()
+        };
+        let cases = || -> i64 { conn.query_row("SELECT count(*) FROM mk_case", [], |r| r.get(0)).unwrap() };
+
+        // Старая база: дело 1910 «Д.4» заведено прежним «Сохранить дело».
+        let first = save_case(&conn, &Case { year: Some(1910), ..reqs("4") }, false).unwrap();
+        // Настройки ещё нет — текущие реквизиты от дела последней работы.
+        assert_eq!(current_reqs(&conn).unwrap().delo.as_deref(), Some("4"));
+        let birth = save_entry_window(&conn, &entry(None, 1, 1910, 1), None).unwrap();
+        assert_eq!((birth.case_id, birth.new_case_year, cases()), (first.id, None, 1), "рождение — в дело Д.4, нового нет");
+
+        // Сменили ФОД на «Д.6» для смертей: набранное рождение не тронуто.
+        set_current_reqs(&conn, &reqs("6")).unwrap();
+        assert_eq!(current_reqs(&conn).unwrap().delo.as_deref(), Some("6"));
+        let death = save_entry_window(&conn, &entry(None, 3, 1910, 1), None).unwrap();
+        assert_eq!((death.new_case_year, cases()), (Some(1910), 2), "смерть — новое дело 1910 года");
+        assert_eq!((delo_of(birth.id), delo_of(death.id)), ("4".to_string(), "6".to_string()));
+        // Вторая смерть того же года — в то же дело.
+        let death2 = save_entry_window(&conn, &entry(None, 3, 1910, 2), None).unwrap();
+        assert_eq!((death2.case_id, cases()), (death.case_id, 2));
+        // Смена года ФОД не меняет: 1911 — дело с «Д.6».
+        let next = save_entry_window(&conn, &entry(None, 3, 1911, 1), None).unwrap();
+        assert_eq!((delo_of(next.id), cases()), ("6".to_string(), 3));
+        // Правка без «изменить» — дело прежнее, даже если текущие реквизиты другие.
+        let again = save_entry_window(&conn, &entry(Some(birth.id), 1, 1910, 1), None).unwrap();
+        assert_eq!(again.case_id, first.id);
+        // «Изменить» у рождения: Д.5 — запись в новом деле, пустое Д.4 убрано.
+        let moved = save_entry_window(&conn, &entry(Some(birth.id), 1, 1910, 1), Some(&reqs("5"))).unwrap();
+        assert_eq!(delo_of(moved.id), "5");
+        let left: i64 = conn.query_row("SELECT count(*) FROM mk_case WHERE id = ?1", [first.id], |r| r.get(0)).unwrap();
+        assert_eq!((left, cases()), (0, 3), "пустое дело Д.4 убрано по номеру");
+        // Правка со сменой года: свои реквизиты (Д.5), не текущие (Д.6).
+        let year_moved = save_entry_window(&conn, &entry(Some(birth.id), 1, 1912, 1), None).unwrap();
+        assert_eq!(delo_of(year_moved.id), "5");
+        // Ключ прихода у новых дел — общий.
+        let keys: i64 = conn.query_row("SELECT count(DISTINCT parish_key) FROM mk_case", [], |r| r.get(0)).unwrap();
+        assert_eq!(keys, 1);
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
 
     /// «Сохранить дело»: три ветки спеки 2026-10-03, п. 1, и сценарий Романа —
     /// сначала реквизиты и год, потом запись.

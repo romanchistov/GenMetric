@@ -160,6 +160,34 @@ UPDATE mk_case
        archive = coalesce(nullif(trim(archive), ''), :archive)
  WHERE id <> :id;
 
+-- @case_find_reqs
+-- Дело года с этими реквизитами (задача 16, Роман 23.11.2026: «ФОД не
+-- меняется, он меняется только после того как пользователь сам руками его
+-- изменил»). Реквизиты сравниваются как набраны, без пробелов по краям;
+-- пустое = пустое. Таких дел несколько (импорт) — с бо́льшим числом записей.
+SELECT c.id FROM mk_case c
+ WHERE c.year = :year
+   AND coalesce(trim(c.archive), '') = :archive AND coalesce(trim(c.fond), '') = :fond
+   AND coalesce(trim(c.opis), '') = :opis AND coalesce(trim(c.delo), '') = :delo
+   AND coalesce(trim(c.church), '') = :church AND coalesce(trim(c.village), '') = :village
+   AND coalesce(trim(c.uyezd), '') = :uyezd AND coalesce(trim(c.guberniya), '') = :guberniya
+ ORDER BY (SELECT count(*) FROM entry e WHERE e.case_id = c.id) DESC, c.id
+ LIMIT 1;
+
+-- @case_drop_if_empty
+-- Дело, из которого ушла последняя запись (правка «изменить» реквизиты),
+-- — по номеру, не по году: у года бывает несколько дел (задача 16).
+DELETE FROM mk_case
+ WHERE id = :id
+   AND NOT EXISTS (SELECT 1 FROM entry e WHERE e.case_id = mk_case.id)
+   AND (SELECT count(*) FROM mk_case) > 1;
+
+-- @case_spread_key
+-- Текущие реквизиты сохранены (задача 16): ключ прихода и индексатор — на
+-- все дела, как у «Сохранить дело». Архив — нет: уже набранные записи не
+-- меняются.
+UPDATE mk_case SET parish_key = :parish_key, indexer = :indexer;
+
 -- @entry_insert
 INSERT INTO entry (case_id, section, page, no_male, no_female,
                    event_day, event_month, event_year,

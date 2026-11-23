@@ -584,6 +584,10 @@ def main() -> int:
               (1899, 0, new_id) in [r[:3] for r in db.execute(sql["case_years"]).fetchall()])
         check("дело по номеру (второе дело года, п. 94)",
               db.execute(sql["case_by_id"], {"id": new_id}).fetchone()[0] == new_id)
+        # Без часов (Бэклог р. 3 п. 12, 23.11.2026): дело 1899 заведено в ту
+        # же секунду или в следующую после записей — и проверка «плавала».
+        # Пустое дело, заведённое РАНЬШЕ последней записи, текущим не бывает.
+        db.execute("UPDATE mk_case SET created_at = '2000-01-01 00:00:00' WHERE id = ?", (new_id,))
         cur = db.execute(sql["case_current"], {"year": None}).fetchone()
         check("текущее дело — дело последней записи", cur[0] == one("SELECT case_id FROM entry ORDER BY id DESC LIMIT 1")[0])
         check("дело по году", db.execute(sql["case_current"], {"year": 1899}).fetchone()[0] == new_id)

@@ -503,6 +503,13 @@ fn fod(c: &Case) -> String {
         .filter(|v| !v.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
+/// Разделы, набранные в деле.
+fn sections(conn: &Connection, case_id: i64) -> Result<HashSet<i64>, String> {
+    let mut stmt = conn.prepare(&statement("case_sections")?).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(rusqlite::named_params! { ":id": case_id }, |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashSet<_>, _>>().map_err(|e| e.to_string())
+}
+
 fn same_fod(a: &Case, b: &Case) -> bool {
     let key = |c: &Case| [normalize(&text(&c.fond)), normalize(&text(&c.opis)), normalize(&text(&c.delo))];
     key(a) == key(b)
@@ -616,8 +623,21 @@ fn merge_in_tx(conn: &Connection, src: &Connection, uid: &str, _file: &str) -> R
     let mut seen_diffs: HashSet<String> = HashSet::new();
     for theirs in &their_cases {
         let t = &theirs.case;
+        // Дело того же года и ФОД; нет — того же года, если у одной из сторон
+        // ФОД пуст (наше пустое дополнится ФОД файла) или у дел есть общий
+        // раздел (тот же раздел, ФОД разный — похоже на опечатку: записи — к
+        // нам, расхождение — в отчёт). Оба ФОД заполнены, разные, и разделы
+        // не пересекаются — своё дело: с задачи 16 у года бывают дела по
+        // разделам (рождения Д.4, смерти Д.6), и смерти помощника не должны
+        // лечь в наше дело рождений (ревьюер 23.11.2026, Бэклог р. 3 п. 13).
+        let their_sections = sections(src, t.id)?;
+        let mut ours_sections: Vec<HashSet<i64>> = Vec::with_capacity(ours.len());
+        for o in &ours {
+            ours_sections.push(sections(conn, o.case.id)?);
+        }
         let found = ours.iter().position(|o| o.case.year == t.year && same_fod(&o.case, t))
-            .or_else(|| t.year.and_then(|_| ours.iter().position(|o| o.case.year == t.year)));
+            .or_else(|| t.year.and_then(|_| ours.iter().enumerate().position(|(i, o)| o.case.year == t.year
+                && (fod(t).is_empty() || fod(&o.case).is_empty() || !ours_sections[i].is_disjoint(&their_sections)))));
         // Дело того же года: реквизиты наши; у файла другие — в отчёт.
         // Пустые наши дополняются.
         match found {
@@ -1596,6 +1616,26 @@ mod tests {
         assert_eq!((done.added, done.duplicates), (0, 1), "{done:?}");
         assert!(done.cases_new.is_empty(), "{:?}", done.cases_new);
         assert_eq!(num(&ours, "SELECT count(*) FROM mk_case"), 1, "пустого дела 1913 года нет");
+        drop((ours, theirs));
+        let _ = std::fs::remove_file(a_path);
+        let _ = std::fs::remove_file(b_path);
+    }
+
+    /// Задача 16 (ревьюер 23.11.2026, Бэклог р. 3 п. 13): у нас 1910 — дело
+    /// рождений Д.4, у помощника 1910 — дело смертей Д.6. Его смерти — в своё
+    /// дело Д.6, а не в наше дело рождений.
+    #[test]
+    fn other_section_case_is_kept() {
+        let Some((a_path, ours)) = fresh("sect-a", 1910, "4") else { return };
+        let Some((b_path, theirs)) = fresh("sect-b", 1910, "6") else { return };
+        save_entry(&ours, &birth(1910, "1", 1, false, "Иван", ("Петр", "Ильин", ""), "")).unwrap();
+        let t = save_entry(&theirs, &birth(1910, "2", 1, false, "Павел", ("Яков", "Сидоров", ""), "")).unwrap();
+        theirs.execute("UPDATE entry SET section = 3 WHERE id = ?1", [t.id]).unwrap();
+        let done = run(&ours, &theirs, "помощник.sqlite", true).unwrap();
+        assert_eq!(done.added, 1, "{done:?}");
+        assert_eq!(done.cases_new, vec!["1910 год — Ф.56 Оп.31 Д.6".to_string()], "{done:?}");
+        assert_eq!(num(&ours, "SELECT count(*) FROM entry e JOIN mk_case c ON c.id = e.case_id WHERE e.section = 3 AND c.delo = '6'"), 1);
+        assert_eq!(num(&ours, "SELECT count(*) FROM entry e JOIN mk_case c ON c.id = e.case_id WHERE e.section = 1 AND c.delo = '4'"), 1);
         drop((ours, theirs));
         let _ = std::fs::remove_file(a_path);
         let _ = std::fs::remove_file(b_path);

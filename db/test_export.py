@@ -520,7 +520,8 @@ def main() -> int:
             check(f"село дела «{village}»: на листе location одна строка «Заборье», без пустого двойника",
                   names.count("Заборье") == 1 and not any("Столпино" in str(n) for n in names), str(names))
             check(f"село дела «{village}»: имя файла выгрузки — без комментария",
-                  db.execute(sql["export_parish"]).fetchone()[0] == "Заборье")
+                  db.execute(sql["export_parish"], {"village": None}).fetchone()[0] == "Заборье"
+                  and db.execute(sql["export_parish"], {"village": village}).fetchone()[0] == "Заборье")
         db.execute("UPDATE mk_case SET village = ?", (was,))
         db.executescript(sql["export_prepare"])
         # Приставка типа, набранная в название пункта («с.Керша», «д. Горелое»):

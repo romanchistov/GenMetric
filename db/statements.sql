@@ -174,6 +174,12 @@ SELECT c.id FROM mk_case c
  ORDER BY (SELECT count(*) FROM entry e WHERE e.case_id = c.id) DESC, c.id
  LIMIT 1;
 
+-- @case_sections
+-- Разделы, набранные в деле (1 — рождения, 2 — браки, 3 — смерти): слияние
+-- различает «то же дело с опечаткой в ФОД» и «дело другого раздела»
+-- (Бэклог р. 3 п. 13).
+SELECT DISTINCT section FROM entry WHERE case_id = :id;
+
 -- @case_count
 SELECT count(*) FROM mk_case;
 
@@ -2324,13 +2330,16 @@ SELECT row_number() OVER (ORDER BY s.book_year, s.section, s.entry_id, s.sort_or
  ORDER BY s.book_year, s.section, s.entry_id, s.sort_order, s.id;
 
 -- @export_parish
--- Село дела — для имени файла выгрузки.
+-- Село — для имени файла выгрузки: :village — из текущих реквизитов
+-- (задача 16, Бэклог р. 3 п. 14), пусто — село дела, обновлённого последним.
 -- Чистое название: комментарий деревни-тёзки в имя файла не идёт.
+WITH v AS (SELECT coalesce(nullif(trim(:village), ''),
+                           (SELECT c.village FROM mk_case c ORDER BY c.updated_at DESC, c.id DESC LIMIT 1)) AS village)
 SELECT coalesce((SELECT CASE WHEN trim(coalesce(p.comment, '')) <> ''
                  AND substr(p.name, -length(trim(p.comment)) - 3) = ' (' || trim(p.comment) || ')'
             THEN substr(p.name, 1, length(p.name) - length(trim(p.comment)) - 3) ELSE p.name END
-                   FROM place p WHERE p.name = trim(c.village) LIMIT 1), c.village, '')
-  FROM mk_case c ORDER BY c.updated_at DESC, c.id DESC LIMIT 1;
+                   FROM place p WHERE p.name = trim(v.village) LIMIT 1), v.village, '')
+  FROM v;
 
 -- @search_mentions
 -- Поиск персоны и её досье (Роман 03.10 и 09.10.2026: «вбить интересующего

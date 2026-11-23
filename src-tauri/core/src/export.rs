@@ -121,8 +121,12 @@ pub fn safe_name(s: &str) -> String {
 /// Название прихода для имени файла: село из дела, без приставки типа
 /// («д.Балахонка» → «Балахонка», долг п. 75).
 pub fn parish_name(conn: &Connection) -> String {
+    // Село текущих реквизитов (задача 16): «последнее обновлённое дело» после
+    // «Исправить» или нового дела бывает не тем.
+    let village = crate::records::current_reqs(conn).ok().and_then(|c| c.village).unwrap_or_default();
     statement("export_parish")
-        .and_then(|sql| conn.query_row(&sql, [], |r| r.get::<_, String>(0)).map_err(|e| e.to_string()))
+        .and_then(|sql| conn.query_row(&sql, rusqlite::named_params! { ":village": village }, |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string()))
         .map(|name| crate::text::strip_place_type(&name).to_string())
         .unwrap_or_default()
 }

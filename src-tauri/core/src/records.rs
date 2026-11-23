@@ -1518,6 +1518,10 @@ mod tests {
         // Сменили ФОД на «Д.6» для смертей: набранное рождение не тронуто.
         set_current_reqs(&conn, &reqs("6")).unwrap();
         assert_eq!(current_reqs(&conn).unwrap().delo.as_deref(), Some("6"));
+        // Имя файла выгрузки — село текущих реквизитов (п. 14), блок исполняет Rust.
+        set_current_reqs(&conn, &Case { village: Some("Новосёлки".into()), ..reqs("6") }).unwrap();
+        assert_eq!(crate::export::parish_name(&conn), "Новосёлки");
+        set_current_reqs(&conn, &reqs("6")).unwrap();
         let death = save_entry_window(&conn, &entry(None, 3, 1910, 1), None).unwrap();
         assert_eq!((death.new_case_year, cases()), (Some(1910), 2), "смерть — новое дело 1910 года");
         assert_eq!((delo_of(birth.id), delo_of(death.id)), ("4".to_string(), "6".to_string()));

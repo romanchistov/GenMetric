@@ -710,6 +710,9 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
         await motherLeaving.current;
         await new Promise((r) => setTimeout(r, 0));
       }
+      // Мать — из ссылки, а не прежняя копия: поле могло смениться, пока
+      // ждали (ревьюер 23.11.2026); разбор — заново, из текста поля.
+      if (latestMother.current.iof.trim() !== mother.iof.trim()) mother = await withParsed(latestMother.current);
       {
         const pin = surnamePin.current;
         if (editingId === null && pin && mother.iof.trim() === pin.from) {

@@ -400,6 +400,12 @@ fn person_value(p: &PersonInput, field: &str) -> String {
             if !t.is_empty() {
                 return t;
             }
+            // Одни годы — как раньше, числом: ключ «оставлено» в уже открытых
+            // строках сверки («возраст: «5» → «7»») не должен поменяться
+            // (ревьюер 23.11.2026).
+            if p.age_months.is_none() && p.age_weeks.is_none() && p.age_days.is_none() {
+                return number(p.age_years);
+            }
             [(p.age_years, "г."), (p.age_months, "мес."), (p.age_weeks, "нед."), (p.age_days, "дн.")].iter()
                 .filter_map(|(v, unit)| v.map(|n| format!("{n} {unit}")))
                 .collect::<Vec<_>>().join(" ")

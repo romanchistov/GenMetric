@@ -50,7 +50,12 @@ export default function EntryReqs({ entryId, value, onChange }: {
             </div>
           ))}
           <div className="modalbar">
-            <button type="button" className="primary" data-entry-reqs-ok onClick={() => { onChange(edit); setEdit(null); }}>Готово</button>
+            <button type="button" className="primary" data-entry-reqs-ok onClick={() => {
+              // Ничего не поменяли — ничего и не переносим: у года бывает два
+              // дела с одинаковыми реквизитами (ревьюер 23.11.2026).
+              const same = FIELDS.every(([, k]) => (edit[k] ?? "").trim() === (own[k] ?? "").trim());
+              onChange(same ? null : edit); setEdit(null);
+            }}>Готово</button>
             <button type="button" className="toggle" onClick={() => setEdit(null)}>Отмена (Esc)</button>
           </div>
         </Modal>

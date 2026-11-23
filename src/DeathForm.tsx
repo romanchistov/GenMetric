@@ -663,7 +663,7 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
     setBusy(true);
     try {
       const done = await invoke<{ id: number; case_id: number; new_case_year: number | null;
-                                  fallback_case: boolean; fallback_year: number | null }>("entry_save", {
+                                  fallback_case: boolean; fallback_year: number | null; year_other: string | null }>("entry_save", {
         reqs: editingId !== null ? reqsEdit : null,
         entry: {
           scan_file: entryScan.forSave(),
@@ -682,7 +682,12 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
       // прошлого, реквизиты надо проверить (спека 2026-10-02, п. 3.2).
       // Только новой записи: правка с «изменить» тоже заводит дело, но
       // текущие реквизиты в напоминании были бы не её (стенд s88).
-      if (done.new_case_year !== null && editingId === null)
+      if (done.new_case_year !== null && editingId === null && done.year_other !== null)
+        // У года уже было своё дело с другими реквизитами (ревьюер 23.11.2026):
+        // так бывает, когда вернулись к прежнему году и забыли его ФОД.
+        warn(`У ${done.new_case_year} года уже есть дело с другими реквизитами: ${done.year_other || "без ФОД"}`,
+             `эта запись легла в новое дело — ${reqsText(mkCase)}. Если это ошибка, откройте её из «Набрано» и нажмите «изменить», а для следующих записей верните реквизиты на экране «Дело»`);
+      else if (done.new_case_year !== null && editingId === null)
         warn(`Первая запись ${done.new_case_year} года с этими реквизитами`,
              `${reqsText(mkCase)} — если у этой книги другие фонд, опись или дело, измените их на экране «Дело» (у этой записи — «изменить» в правке)`);
       // Запись без года, а её дело убрано: легла в первое дело прихода — не молча.

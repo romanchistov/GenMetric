@@ -877,11 +877,12 @@ fn case_reqs_get(app: State<App>) -> Result<Option<Case>, String> {
     // Новый приход: ни реквизитов, ни дел — None, формы ждут «Дело».
     with_conn(&app, "Чтение реквизитов", |conn| {
         let set = genmetric_core::parish::setting_get(conn, genmetric_core::records::CASE_REQS)?.is_some();
-        let cases: i64 = conn.query_row("SELECT count(*) FROM mk_case", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let cases: i64 = conn.query_row(&statement("case_count")?, [], |r| r.get(0)).map_err(|e| e.to_string())?;
         if !set && cases == 0 {
             return Ok(None);
         }
-        genmetric_core::records::current_reqs(conn).map(Some)
+        // Закрепить при первом чтении (ревьюер 23.11.2026).
+        genmetric_core::records::ensure_reqs(conn).map(Some)
     })
 }
 
@@ -923,14 +924,7 @@ fn case_list(app: State<App>) -> Result<Vec<CaseRow>, String> {
 /// «Исправить реквизиты» дела — у всех его записей (задача 16).
 #[tauri::command]
 fn case_fix(app: State<App>, case: Case) -> Result<(), String> {
-    with_conn_shared(&app, "Исправление реквизитов дела", |conn| {
-        let nz = |v: &Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
-        conn.execute(&statement("case_fix")?, rusqlite::named_params! {
-            ":id": case.id, ":archive": nz(&case.archive), ":fond": nz(&case.fond), ":opis": nz(&case.opis),
-            ":delo": nz(&case.delo), ":church": nz(&case.church), ":village": nz(&case.village),
-            ":uyezd": nz(&case.uyezd), ":guberniya": nz(&case.guberniya),
-        }).map(|_| ()).map_err(|e| e.to_string())
-    })
+    with_conn_shared(&app, "Исправление реквизитов дела", |conn| genmetric_core::records::fix_case(conn, &case))
 }
 
 /// «Сохранить» на «Деле»: только текущие реквизиты; набранное не меняется.

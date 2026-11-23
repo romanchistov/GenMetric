@@ -174,6 +174,21 @@ SELECT c.id FROM mk_case c
  ORDER BY (SELECT count(*) FROM entry e WHERE e.case_id = c.id) DESC, c.id
  LIMIT 1;
 
+-- @case_count
+SELECT count(*) FROM mk_case;
+
+-- @case_other_of_year
+-- Другое дело того же года с записями того же раздела (больше записей —
+-- первым): запись легла в новое дело, а этот раздел года уже набирался с
+-- другими реквизитами — похоже, вернулись к году и забыли его ФОД (ревьюер
+-- 23.11.2026). Другой раздел с другим ФОД (рождения Д.4, смерти Д.6) — так
+-- и задумано, не сюда.
+SELECT c.id FROM mk_case c
+ WHERE c.year = :year AND c.id <> :id
+   AND EXISTS (SELECT 1 FROM entry e WHERE e.case_id = c.id AND e.section = :section)
+ ORDER BY (SELECT count(*) FROM entry e WHERE e.case_id = c.id) DESC, c.id
+ LIMIT 1;
+
 -- @case_drop_if_empty
 -- Дело, из которого ушла последняя запись (правка «изменить» реквизиты),
 -- — по номеру, не по году: у года бывает несколько дел (задача 16).

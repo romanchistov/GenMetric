@@ -1706,7 +1706,7 @@ def incident_20261020_otvet_na_sborku_19_10():
     check("то же значение года — не смена руками", "if (v === year) return;" in read("src/newyear.ts"))
     check("страница из последней записи — только при смене года из формы, не при «Сохранить дело» (ревьюер 20.10.2026)",
           all("else if (editingId === null && workYear.freshSections) {" in read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")))
-    check("отказ завести год — полосой, не молча", "if (r.typo) warn(`Дело ${year} года не заведено`," in app)
+    check("опечатка года — полосой, не молча (с 23.11.2026 — без совета про «Дело»)", "if (r.typo) warn(`Год ${year} — другие формы на него не перешли`," in app)
     check("«продолжить с места» не возвращает форму с начатого нового года",
           all("if (placedFresh.current) return;" in read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")))
     check("долг п. 77: вернулись на год с записями — страница из его последней записи",
@@ -2683,8 +2683,14 @@ def incident_20261120_fod_u_vseh_zapisej_goda():
     blocks = dict(re.findall(r"-- @(\w+)\n(.*?)(?=\n-- @|\Z)", read("db/statements.sql"), re.S))
     check("«Сохранить» реквизиты набранные дела не меняет (ключ и индексатор — да, архив — нет)",
           "archive" not in strip_comments(blocks.get("case_spread_key", "")) and "parish_key" in blocks.get("case_spread_key", ""))
+    records = strip_comments(read("src-tauri/core/src/records.rs"))
+    i = records.find("pub fn save_entry_window(")
+    check("текущие реквизиты закреплены до выбора дела (ревьюер 23.11.2026: «изменить» у последней записи сдвигал их)",
+          i >= 0 and 0 <= records.find("let current = ensure_reqs(conn)?;", i) < records.find("case_for_reqs(", i + 10)
+          and "genmetric_core::records::ensure_reqs(conn)" in main)
     check("поведение держит тест крейта",
-          "fn window_cases_by_reqs()" in read("src-tauri/core/src/records.rs"))
+          "fn window_cases_by_reqs()" in read("src-tauri/core/src/records.rs")
+          and "fn reqs_pinned_on_old_base()" in read("src-tauri/core/src/records.rs"))
 
 
 ИНЦИДЕНТЫ = [

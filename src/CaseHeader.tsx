@@ -58,6 +58,13 @@ const EMPTY: Case = {
 /** Дело прихода в списке (задача 16): год, реквизиты, сколько записей. */
 type CaseRow = { case: Case; entries: number };
 
+/** «запись», «записи», «записей» — по числу. */
+function entriesWord(n: number): string {
+  const d = n % 10, h = n % 100;
+  if (d === 1 && h !== 11) return "записи";
+  return "записей";
+}
+
 /** Подпись дела: «1910 · Ф.56 Оп.6 Д.4 · Христорождественская, Борисоглебское». */
 export function caseLabel(c: Case): string {
   const fod = [["Ф.", c.fond], [" Оп.", c.opis], [" Д.", c.delo]]
@@ -464,7 +471,7 @@ export default function CaseHeader({ onSaved, reload, parishName, onOpenEntry, v
           ))}
           <div className="modalbar">
             <button type="button" className="primary" data-case-fix-save onClick={() => void fixCase(fixing)}>
-              Исправить у {fixing.entries} записей
+              Исправить у {fixing.entries} {entriesWord(fixing.entries)}
             </button>
             <button type="button" className="toggle" onClick={() => setFixing(null)}>Отмена (Esc)</button>
           </div>

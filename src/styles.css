@@ -699,7 +699,20 @@ h2 .ofyear { font-weight: normal; color: var(--muted, #666); }
    23.11.2026, Бэклог р. 3 п. 10: при 7–8 приходах была прокрутка при
    свободном месте); дальше — прокрутка только списка: шапка, «Выбран: …» и
    нижние кнопки остаются видны. */
-.parishlist { display: flex; flex-direction: column; gap: 0.15em; margin: 0 0 0.6em; max-height: max(10em, calc(100vh - 26em)); overflow-y: auto; }
+.parishlist { display: flex; flex-direction: column; gap: 0.15em; margin: 0 0 0.6em; overflow-y: auto; }
+/* Прокрутка — только у списка (Нинель и Роман 24.11.2026: при 12+
+   приходах было две — у списка и у всего окна). Окно со списком — колонка:
+   шапка, панель «Выбран: …» и кнопки своей высоты, список забирает остаток
+   высоты окна. Окно само прокручивается, только если и при списке в шесть
+   строк шрифта всё не помещается (очень маленький экран). */
+.modal[data-modal="parish"]:has(> .parishlist) { display: flex; flex-direction: column; }
+.modal[data-modal="parish"]:has(> .parishlist) > * { flex-shrink: 0; }
+.modal[data-modal="parish"] > .parishlist { flex: 0 1 auto; min-height: 6em; }
+/* Окну со списком — на 2em больше высоты экрана, чем прочим окнам: в
+   колонке отступы блоков не схлопываются, и восемь приходов на экране в 900
+   точек иначе снова прокручивались (стенд s89). */
+.overlay:has(> .modal[data-modal="parish"] > .parishlist) { padding-top: 2em; padding-bottom: 2em; }
+.modal[data-modal="parish"]:has(> .parishlist) { max-height: calc(100vh - 4em); }
 /* Строка прихода — кружок выбора, название и сведения; без кнопок (Роман
    19.11.2026: «тесно в строке прихода… понятно домохозяйке»). Щелчок по любому
    месту строки выбирает приход. */

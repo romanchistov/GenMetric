@@ -2715,7 +2715,26 @@ def incident_20261120_sliyanie_skrytye_otlichiya():
     check("поведение держит тест крейта", "fn hidden_diffs_are_shown()" in read("src-tauri/core/src/merge.rs"))
 
 
+def incident_20261124_dve_prokrutki_prihody():
+    """Нинель и Роман 24.11.2026 (ответ на сборку 23.11): в окне «Приходы»
+    при 12+ приходах две прокрутки — у списка и у всего окна; «Скролл должен
+    быть только у списка!». Высота списка была своя (calc от экрана), а окно
+    — своя.
+
+    Защита: окно со списком — колонка, список забирает остаток высоты окна
+    (flex), своей формулы высоты у списка нет. Стенд — _стенд/s89.mjs (30
+    приходов: прокрутка у списка, у окна нет).
+    """
+    css = read("src/styles.css")
+    check("окно «Приходы» со списком — колонка, список забирает остаток высоты",
+          '.modal[data-modal="parish"]:has(> .parishlist) { display: flex; flex-direction: column; }' in css
+          and ".modal[data-modal=\"parish\"] > .parishlist { flex: 0 1 auto;" in css)
+    i = css.find(".parishlist {")
+    check("у списка приходов нет своей формулы высоты от экрана", i >= 0 and "100vh" not in css[i:css.find("}", i)])
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261124_dve_prokrutki_prihody,
     incident_20261120_sliyanie_skrytye_otlichiya,
     incident_20261120_fod_u_vseh_zapisej_goda,
     incident_20261120_mladenec_bez_familii,

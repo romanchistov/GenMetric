@@ -2367,6 +2367,16 @@ fn scan_set_dir(handle: tauri::AppHandle, app: State<App>, year: Option<i64>, pa
     let (last, kind) = with_conn(&app, "Папка сканов", |conn| {
         let before = parish::setting_get(conn, &dir_key)?;
         parish::setting_set(conn, &dir_key, &dir)?;
+        // Другая папка — места вкладок года от прежней не годятся (ревьюер
+        // 24.11.2026: после scan_inherit «Смерти» остались бы на листе 1799).
+        if before.as_deref() != Some(dir.as_str()) {
+            let y = year.map(|y| y.to_string()).unwrap_or_default();
+            for base in ["scan_last_", "scan_last_pdf_"] {
+                for tail in ["_1", "_2", "_3"] {
+                    parish::setting_set(conn, &format!("{base}{y}{tail}"), "")?;
+                }
+            }
+        }
         // Перетащили файл — вид листов по нему: PDF или картинки.
         if let Some(f) = &file {
             let kind = if genmetric_core::scans::split_sheet(f).1.is_some() { "pdf" } else { "images" };

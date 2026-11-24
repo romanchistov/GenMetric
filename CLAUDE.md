@@ -40,7 +40,7 @@
     node --experimental-strip-types scripts/test_dossier.mjs    # → «Итог: успешно 48, ошибок 0» (слова досье персоны, блок «Семья» — и дети по смерти, своё рождение)
     node --experimental-strip-types scripts/test_age.mjs        # → «Итог: успешно 25, ошибок 0» (возраст умершего)
     node --experimental-strip-types scripts/test_names.mjs      # → «Итог: успешно 170, ошибок 0» (заглавные буквы в ИОФ и НП, слово «имени нет», женская форма фамилии, звание по роли, название пункта с комментарием, потерянное имя nameLost)
-    python3 scripts/test_incidents.py                           # → «Итог: успешно 595, ошибок 0»
+    python3 scripts/test_incidents.py                           # → «Итог: успешно 596, ошибок 0»
     python3 -m pyflakes scripts db                              # → молчит (нужен pip install pyflakes; сценарий e2e — без запуска на Windows)
     python3 scripts/check_styles.py                             # → «Итог: успешно 5, ошибок 0»
     npm run build                                               # → «✓ built in …», ошибок типов нет
@@ -708,7 +708,13 @@ genmetric-core --release search_real -- --ignored --nocapture`.
   (`asset_protocol_scope().allow_directory`) при выборе и при открытии.
 - **Папка сканов — настройка прихода по году дела** (`scan_dir_<год>`,
   `scan_last_<год>`), путь у каждого компьютера свой; у записи — только имя
-  файла (`entry.scan_file`). Вид окна (`ui_scan_on`, `ui_scan_form_width`) —
+  файла (`entry.scan_file`). С 24.11.2026 (задача 3) место — у вкладки:
+  `scan_last_<год>_<раздел>` (и `scan_last_pdf_…`), общее место года —
+  запасным и пишется тоже; окно скана знает видимую вкладку (`section` у
+  `ScanProvider`), смена вкладки перечитывает место, показ записи на правке
+  (`peek`) это переживает; другая папка года сбрасывает места вкладок;
+  новый год без своей папки получает папку и места прежнего (`scan_inherit`),
+  окна выбора нет. «Заморозки» листания при смене вкладки больше нет. Вид окна (`ui_scan_on`, `ui_scan_form_width`) —
   общая настройка.
 - **Запись на правке свой файл не меняет и чужой не получает**, пока человек
   не нажал «привязать»; показ разворота (правка, ссылка «скан») не затирает

@@ -708,6 +708,9 @@ h2 .ofyear { font-weight: normal; color: var(--muted, #666); }
 .modal[data-modal="parish"]:has(> .parishlist) { display: flex; flex-direction: column; }
 .modal[data-modal="parish"]:has(> .parishlist) > * { flex-shrink: 0; }
 .modal[data-modal="parish"] > .parishlist { flex: 0 1 auto; min-height: 6em; }
+/* Без :has (WebKit до Safari 15.4, macOS до 12.3) колонки нет — списку
+   прежний потолок высоты, иначе прокручивалось бы всё окно (ревьюер 24.11.2026). */
+@supports not selector(:has(*)) { .parishlist { max-height: calc(100vh - 26em); } }
 /* Окну со списком — на 2em больше высоты экрана, чем прочим окнам: в
    колонке отступы блоков не схлопываются, и восемь приходов на экране в 900
    точек иначе снова прокручивались (стенд s89). */

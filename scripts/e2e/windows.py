@@ -1150,6 +1150,27 @@ def pdf_tiff_scans(driver, root, scan_attr):
     check("выбор «PDF» и открытый лист «дело 1897.pdf#3» запомнены у дела (scan_state читает их заново)",
           got.get("kind") == "pdf" and got.get("files") == ["дело 1897.pdf#1", "дело 1897.pdf#2", "дело 1897.pdf#3"]
           and got.get("bad") == ["дело 1897.pdf#2"] and got.get("open") == "дело 1897.pdf#3", str(got))
+    # Задача 3 (Роман 24.11.2026) через настоящий Rust: место вкладки,
+    # общее место года запасным, передача папки новому году.
+    per_tab = driver.execute_async_script(
+        "const done = arguments[arguments.length - 1];"
+        "const call = window.__TAURI_INTERNALS__.invoke;"
+        "(async () => {"
+        "  await call('scan_remember', {year: 1897, file: 'дело 1897.pdf#2', section: 3});"
+        "  const deaths = await call('scan_state', {year: 1897, section: 3});"
+        "  await call('scan_remember', {year: 1897, file: 'дело 1897.pdf#3', section: 1});"
+        "  const deaths2 = await call('scan_state', {year: 1897, section: 3});"
+        "  const marr = await call('scan_state', {year: 1897, section: 2});"
+        "  const given = await call('scan_inherit', {from: 1897, to: 1777});"
+        "  const again = await call('scan_inherit', {from: 1897, to: 1777});"
+        "  const y1777 = await call('scan_state', {year: 1777, section: 3});"
+        "  await call('scan_remember', {year: 1897, file: 'дело 1897.pdf#3', section: 3});"
+        "  return {deaths: deaths.open, deaths2: deaths2.open, marr: marr.open, given, again, dir: y1777.dir, open1777: y1777.open};"
+        "})().then(done, (e) => done({error: String(e)}));")
+    check("скан по вкладкам: у «Смертей» свой лист, у «Браков» — общий, новый год получает папку и места",
+          "error" not in per_tab and per_tab["deaths"] == "дело 1897.pdf#2" and per_tab["deaths2"] == "дело 1897.pdf#2"
+          and per_tab["marr"] == "дело 1897.pdf#3" and per_tab["given"] is True and per_tab["again"] is False
+          and per_tab["open1777"] == "дело 1897.pdf#2", str(per_tab))
     # Картинкой, как просмотрщик: img-src разрешает протокол scan, ответ 403 — ошибка загрузки.
     blocked = driver.execute_async_script(
         "const done = arguments[arguments.length - 1]; const img = new Image();"

@@ -1520,7 +1520,8 @@ def incident_20261014_stranica_i_dovodka():
     """
     scan = read("src/scan.tsx")
     check("страница за сканом: только листание на один файл с разворота набора, не переход по номеру",
-          "if (to !== at && !wasAway) turnListeners.current.forEach((fn) => fn(by));" in scan
+          # С 24.11.2026 (задача 3) — и не пока место вкладки читается.
+          "if (to !== at && !wasAway && !loading.current) turnListeners.current.forEach((fn) => fn(by));" in scan
           and "turnListeners" not in scan.split("goTo: (i) => {", 1)[1].split("},", 1)[0]
           and "if (busy || !file || !fn || frozen.current) return;" in scan
           and "root.current.offsetParent === null" in scan)
@@ -2755,6 +2756,9 @@ def incident_20261124_skan_po_vkladkam():
     check("окно скана читает и запоминает место видимой вкладки",
           'invoke<ScanFiles>("scan_state", { year, section })' in scan
           and 'invoke("scan_remember", { year, file, section: sect })' in scan)
+    check("показ записи (peek) переживает смену вкладки; лист перед сменой запоминается сразу (ревьюер 24.11.2026)",
+          "const keep = held.current !== null && s.dir === dirRef.current ? peeked.current : null;" in scan
+          and "const pend = pendingRemember.current;" in scan)
     check("новый год без своей папки — папка прежнего, без окна выбора",
           'invoke<boolean>("scan_inherit", { from, to })' in scan and "askDir(y, was)" in read("src/newyear.ts"))
 

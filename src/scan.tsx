@@ -140,6 +140,16 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   /** Год, с которого перешли на новый (`askDir`): его папка — новому году. */
   const askFrom = useRef<number | null>(null);
   const [reloadDir, setReloadDir] = useState(0);
+  /** Показанный файл и показ записи — для перечитывания при смене вкладки:
+   *  показ записи на правке не должен пропасть (ревьюер 24.11.2026). */
+  /** Лист записи, показанный `peek`, — имя сразу, до перерисовки: ответ на
+   *  перечитывание приходит раньше, чем окно успевает его показать (стенд s90). */
+  const peeked = useRef<string | null>(null);
+  /** Место вкладки ещё читается: листание в это время страницу формы не
+   *  двигает (лист — ещё прежней вкладки). */
+  const loading = useRef(false);
+  /** Запоминание, которое ждёт своих 0,6 с: смена вкладки делает его сразу. */
+  const pendingRemember = useRef<{ year: number | null; section: number | null; file: string } | null>(null);
 
   const apply = useCallback((next: ScanFiles) => {
     held.current = null;
@@ -180,10 +190,33 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   useEffect(() => {
     if (!ready) return;
     const mine = ++loadSeq.current;
+    // Лист прежней вкладки, перелистнутый только что, — запомнить сейчас,
+    // не дожидаясь 0,6 с (ревьюер 24.11.2026).
+    const pend = pendingRemember.current;
+    if (pend) {
+      pendingRemember.current = null;
+      remembered.current = `${pend.year}|${pend.section}|${pend.file}`;
+      invoke("scan_remember", { year: pend.year, file: pend.file, section: pend.section })
+        .catch((e) => report("Открытый скан не запомнен", e));
+    }
+    loading.current = true;
     invoke<ScanFiles>("scan_state", { year, section })
       .then((s) => {
         if (mine !== loadSeq.current) return;
+        loading.current = false;
+        // Показ записи на правке (peek) в той же папке переживает смену
+        // вкладки: открыли запись из «Поиска» — вкладка сменилась, а лист
+        // записи остаётся; «к набору» вернёт на место этой вкладки.
+        const keep = held.current !== null && s.dir === dirRef.current ? peeked.current : null;
         apply(s);
+        if (keep) {
+          const i = s.files.indexOf(keep);
+          if (i >= 0) {
+            held.current = Math.max(0, s.open ? s.files.indexOf(s.open) : 0);
+            setAway("edit");
+            setIndex(i);
+          }
+        }
         loadedYear.current = year;
         loadedSection.current = section;
         // Просьба выбрать папку — только для своего года; прочитана папка
@@ -210,7 +243,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           askFrom.current = null;
         }
       })
-      .catch((e) => report("Не удалось прочитать папку сканов", e));
+      .catch((e) => { loading.current = false; report("Не удалось прочитать папку сканов", e); });
   }, [year, section, ready, apply, reloadDir]);
 
   // Окно: блок включён — узкое окно расширяется, выключен — возвращается.
@@ -349,10 +382,16 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   const remembered = useRef<string | null>(null);
   useEffect(() => {
     const sect = loadedSection.current;
-    if (!file || held.current !== null || remembered.current === `${year}|${sect}|${file}`) return;
+    if (!file || held.current !== null || remembered.current === `${year}|${sect}|${file}`) {
+      // Открыли запись, пока ждали, — ожидание отменено, запоминать нечего.
+      if (held.current !== null) pendingRemember.current = null;
+      return;
+    }
     // Отметка «запомнено» — только когда запись ушла: отменённое ожидание
     // (пролистали дальше, открыли запись) не должно считаться сделанным.
+    pendingRemember.current = { year, section: sect, file };
     const timer = window.setTimeout(() => {
+      pendingRemember.current = null;
       remembered.current = `${year}|${sect}|${file}`;
       invoke("scan_remember", { year, file, section: sect }).catch((e) => report("Открытый скан не запомнен", e));
     }, 600);
@@ -394,7 +433,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
         go(to);
         // Страница формы идёт за сканом, только если скан и правда сменился
         // и показан разворот набора, а не чужой записи.
-        if (to !== at && !wasAway) turnListeners.current.forEach((fn) => fn(by));
+        if (to !== at && !wasAway && !loading.current) turnListeners.current.forEach((fn) => fn(by));
       },
       onTurn: (fn) => {
         turnListeners.current.add(fn);
@@ -429,6 +468,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       current: (formYear) => (on && (year === null || formYear === year) ? file : null),
       peek: (name, entryYear) => {
         if (!name || entryYear !== year) return;
+        peeked.current = name;
         const i = state.files.indexOf(name);
         if (i < 0) {
           const j = state.other.indexOf(name);
@@ -439,6 +479,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
         leave("edit", i);
       },
       back: () => {
+        peeked.current = null;
         setAway(null);
         if (held.current === null) return;
         const to = held.current;

@@ -132,7 +132,8 @@ function kinGender(k: string): "М" | "Ж" | undefined {
 }
 
 export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNewYear, onYear }: FormProps) {
-  // Год на форме сменили на год без записей — все формы встают на него с
+  // Год на форме сменили на год без записей — форма встаёт на него с
+  // (с 24.11.2026 — только эта форма, другие стоят, где были; Роман)
   // чистого листа, а если у года нет папки сканов — окно выбора папки
   // (Роман 19.10.2026, спека 2026-10-19-oshibki-svyazej-i-dovodka, Ж2.7).
   const scanCtx = useScan();

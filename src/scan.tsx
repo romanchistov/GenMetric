@@ -601,7 +601,15 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       },
       pickDir, askDir,
       // У дела ещё нет года (новое дело) — папка его же: первая запись года получает файл.
-      current: (formYear) => (on && !visitBase.current && (year === null || formYear === year) ? file : null),
+      // Пока показан чужой год — лист отложенного места набора: новая запись
+      // получает тот же лист, что вернёт «к набору» (ревьюер 24.11.2026: иначе
+      // Ctrl+Enter во время показа сохранял запись без скана).
+      current: (formYear) => {
+        if (!on || (year !== null && formYear !== year)) return null;
+        const base = visitBase.current;
+        if (!base) return file;
+        return base.state.missing ? null : base.state.files[Math.min(base.index, Math.max(0, base.state.files.length - 1))] ?? null;
+      },
       peek: (name, entryYear) => {
         if (!name) return;
         if (entryYear !== year) {

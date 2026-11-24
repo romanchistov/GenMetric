@@ -1359,7 +1359,8 @@ def incident_20261010_skany_ryadom_s_formoj():
     # С 24.11.2026 (задача 10) лист записи другого года показывается из папки
     # ЕЁ года (visit), а не одноимённый файл открытой папки.
     check("новая запись получает разворот только из папки дела своего года; ссылка «скан» — из папки года записи",
-          "current: (formYear) => (on && !visitBase.current && (year === null || formYear === year) ? file : null)," in scan
+          "if (!on || (year !== null && formYear !== year)) return null;" in scan
+          and "if (!base) return file;" in scan
           and "if (entryYear !== year) {" in scan
           and 'if (entryYear !== null) visit(name, entryYear, "edit");' in scan
           # Свой год во время показа чужого — из отложенной папки вкладки.
@@ -2818,7 +2819,9 @@ def incident_20261124_skan_zapisi_drugogo_goda():
                       + '          return "ok";') in scan[i:i + 600]
           and 'invoke<ScanFiles>("scan_state", { year: y, section: null, peek: true })' in scan)
     check("место набора отложено и возвращается «к набору»; новая запись чужой лист не получает",
-          "const base = visitBase.current;" in scan and "on && !visitBase.current &&" in scan)
+          "const base = visitBase.current;" in scan
+          # Пока показан чужой год, новая запись получает лист места набора.
+          and "return base.state.missing ? null : base.state.files[Math.min(base.index," in scan)
     main = strip_comments(read("src-tauri/src/main.rs"))
     check("просмотр (peek) не забирает папку «без года»",
           "if dir.is_none() && year.is_some() && peek != Some(true) {" in main)

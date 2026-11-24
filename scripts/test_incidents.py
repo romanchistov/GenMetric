@@ -2786,6 +2786,14 @@ def incident_20261124_skan_god_vkladki():
         check(f"{form} сообщает год новой записи ({n}), запись на правке — нет",
               f"if (editingId === null && year !== null && year >= 1700 && year <= 1930) onYear?.({n}, year);" in src
               and "onNewYear={newYear} onYear={formYear} />" in app.split(f"<{form} ", 1)[-1].split(chr(10), 1)[0])
+    # Ревьюер 24.11.2026: перелистнул и сразу на вкладку другого года — лист
+    # запоминается под показанным годом, смена года ожидание не отменяет.
+    scan = strip_comments(read("src/scan.tsx"))
+    i = scan.find("const year = loadedYear.current ?? null;")
+    check("лист запоминается под показанным годом (loadedYear), смена года его не теряет",
+          0 <= i < scan.find("pendingRemember.current = { year, section: sect, file };", i)
+          and "}, [file]);" in scan[i:i + 1500])
+
 
 ИНЦИДЕНТЫ = [
     incident_20261124_skan_god_vkladki,

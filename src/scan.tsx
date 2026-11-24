@@ -384,7 +384,14 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   // Открытый разворот запоминается — кроме показа записи на правке.
   const remembered = useRef<string | null>(null);
   useEffect(() => {
+    // Год и раздел — те, чьё место показано (`loadedYear`, `loadedSection`),
+    // а не вкладки, на которую только что перешли: с 24.11.2026 вкладки
+    // бывают на разных годах, и смена вкладки меняет год (ревьюер: лист,
+    // перелистнутый за миг до перехода на вкладку другого года, терялся или
+    // записывался под чужой год). Поэтому и зависимость — только от листа:
+    // смена года не отменяет ожидание, его сразу выполняет чтение места.
     const sect = loadedSection.current;
+    const year = loadedYear.current ?? null;
     if (!file || held.current !== null || remembered.current === `${year}|${sect}|${file}`) {
       // Открыли запись, пока ждали, — ожидание отменено, запоминать нечего.
       if (held.current !== null) pendingRemember.current = null;
@@ -401,7 +408,8 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
     // Лист сменился раньше 0,6 с — его ожидание отменено (ревьюер 24.11.2026:
     // вперёд и сразу назад — запоминался лист, с которого ушли).
     return () => { window.clearTimeout(timer); pendingRemember.current = null; };
-  }, [file, year]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- год — loadedYear, см. выше
+  }, [file]);
 
   const scan = useMemo<Scan>(() => {
     const go = (i: number) => setIndex(Math.min(Math.max(0, count - 1), Math.max(0, i)));

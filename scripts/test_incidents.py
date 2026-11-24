@@ -2821,7 +2821,10 @@ def incident_20261124_skan_zapisi_drugogo_goda():
     check("место набора отложено и возвращается «к набору»; новая запись чужой лист не получает",
           "const base = visitBase.current;" in scan
           # Пока показан чужой год, новая запись получает лист места набора.
-          and "return base.state.missing ? null : base.state.files[Math.min(base.index," in scan)
+          and "return base.state.missing ? null : base.state.files[Math.min(base.index," in scan
+          # Ревьюер 24.11.2026: смена вкладки во время показа обновляет место —
+          # форма перечитывает его (иначе запись получала лист прежней вкладки).
+          and "setBaseTick((n) => n + 1);" in scan and "fromBase, baseTick]);" in scan)
     main = strip_comments(read("src-tauri/src/main.rs"))
     check("просмотр (peek) не забирает папку «без года»",
           "if dir.is_none() && year.is_some() && peek != Some(true) {" in main)

@@ -158,6 +158,10 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   const visitBase = useRef<{ state: ScanFiles; index: number } | null>(null);
   const visitSeq = useRef(0);
   const [visiting, setVisiting] = useState<number | null>(null);
+  /** Отложенное место сменилось (смена вкладки во время показа) — форма
+   *  должна перечитать `current()`: иначе новая запись получала лист прежней
+   *  вкладки (ревьюер 24.11.2026). */
+  const [baseTick, setBaseTick] = useState(0);
   /** Показанное сейчас — для отложенного места: ответ приходит позже перерисовки. */
   const stateNow = useRef<ScanFiles>(EMPTY);
   const atNow = useRef(0);
@@ -230,6 +234,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           // Показан скан записи другого года (задача 10) — он остаётся, а
           // место новой вкладки становится местом возврата.
           visitBase.current = { state: s, index: Math.max(0, s.open ? s.files.indexOf(s.open) : 0) };
+          setBaseTick((n) => n + 1);
         } else {
         // Показ записи на правке (peek) в той же папке переживает смену
         // вкладки: открыли запись из «Поиска» — вкладка сменилась, а лист
@@ -657,7 +662,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           .catch((e) => report("Ширина колонки формы не сохранена", e));
       },
     };
-  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting, endVisit, fromBase]);
+  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting, endVisit, fromBase, baseTick]);
 
   // Действия человека в окне скана — те же, что кнопками блока.
   const scanRef = useRef(scan);

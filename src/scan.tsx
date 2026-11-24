@@ -152,6 +152,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   const pendingRemember = useRef<{ year: number | null; section: number | null; file: string } | null>(null);
 
   const apply = useCallback((next: ScanFiles) => {
+    loading.current = false;
     held.current = null;
     heldFlipped.current = false;
     setAway(null);
@@ -207,12 +208,14 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
         // Показ записи на правке (peek) в той же папке переживает смену
         // вкладки: открыли запись из «Поиска» — вкладка сменилась, а лист
         // записи остаётся; «к набору» вернёт на место этой вкладки.
-        const keep = held.current !== null && s.dir === dirRef.current ? peeked.current : null;
+        const keep = s.dir === dirRef.current ? peeked.current : null;
         apply(s);
+        peeked.current = null;
         if (keep) {
           const i = s.files.indexOf(keep);
           if (i >= 0) {
             held.current = Math.max(0, s.open ? s.files.indexOf(s.open) : 0);
+            peeked.current = keep;
             setAway("edit");
             setIndex(i);
           }
@@ -395,7 +398,9 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       remembered.current = `${year}|${sect}|${file}`;
       invoke("scan_remember", { year, file, section: sect }).catch((e) => report("Открытый скан не запомнен", e));
     }, 600);
-    return () => window.clearTimeout(timer);
+    // Лист сменился раньше 0,6 с — его ожидание отменено (ревьюер 24.11.2026:
+    // вперёд и сразу назад — запоминался лист, с которого ушли).
+    return () => { window.clearTimeout(timer); pendingRemember.current = null; };
   }, [file, year]);
 
   const scan = useMemo<Scan>(() => {
@@ -413,6 +418,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
      *  тут; показан другой вид листов — он и запоминается. */
     const settle = () => {
       held.current = null;
+      peeked.current = null;
       setAway(null);
       if (heldFlipped.current && state.kind) {
         heldFlipped.current = false;
@@ -468,13 +474,16 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       current: (formYear) => (on && (year === null || formYear === year) ? file : null),
       peek: (name, entryYear) => {
         if (!name || entryYear !== year) return;
-        peeked.current = name;
+        // Лист записи — запомнить для перечитывания при смене вкладки, только
+        // если он показан (найден в папке); иначе прежняя отметка снимается.
         const i = state.files.indexOf(name);
         if (i < 0) {
           const j = state.other.indexOf(name);
+          peeked.current = null;
           if (j >= 0) leave("edit", j, true);
           return;
         }
+        peeked.current = name;
         if (i === at && held.current === null) return;
         leave("edit", i);
       },

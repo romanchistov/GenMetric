@@ -2757,8 +2757,10 @@ def incident_20261124_skan_po_vkladkam():
           'invoke<ScanFiles>("scan_state", { year, section })' in scan
           and 'invoke("scan_remember", { year, file, section: sect })' in scan)
     check("показ записи (peek) переживает смену вкладки; лист перед сменой запоминается сразу (ревьюер 24.11.2026)",
-          "const keep = held.current !== null && s.dir === dirRef.current ? peeked.current : null;" in scan
-          and "const pend = pendingRemember.current;" in scan)
+          "const keep = s.dir === dirRef.current ? peeked.current : null;" in scan
+          and "const pend = pendingRemember.current;" in scan
+          # Второй круг ревью: вперёд и сразу назад — ожидание отменено.
+          and "return () => { window.clearTimeout(timer); pendingRemember.current = null; };" in scan)
     check("новый год без своей папки — папка прежнего, без окна выбора",
           'invoke<boolean>("scan_inherit", { from, to })' in scan and "askDir(y, was)" in read("src/newyear.ts"))
 

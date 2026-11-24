@@ -70,7 +70,7 @@ export default function App() {
   // «Сохранить дело» с годом — формы встают на него (спека 2026-10-03, п. 1.2);
   // «Открыть запись» из списка на сверку — запись в форме своего раздела.
   // n — счётчик: то же значение второй раз тоже должно сработать.
-  const [workYear, setWorkYear] = useState<{ year: number; n: number; fresh?: boolean; freshSections?: number[] } | null>(null);
+  const [workYear, setWorkYear] = useState<{ year: number; n: number; fresh?: boolean; freshSections?: number[]; section?: 1 | 2 | 3 } | null>(null);
   const [openReq, setOpenReq] = useState<{ section: number; id: number; n: number } | null>(null);
   function openEntry(section: number, id: number) {
     setScreen(section === 1 ? "births" : section === 2 ? "marriages" : "deaths");
@@ -88,14 +88,19 @@ export default function App() {
    *  20.10.2026: дело нового года было заведено заранее, и назад уходила
    *  одна форма). */
   const lastMove = useRef<{ from: number; to: number } | null>(null);
-  async function newYear(year: number, from: number | null): Promise<boolean> {
+  /** Роман 24.11.2026 (Бэклог р. 3 п. 15): «Нажатие + или -, изменение года в
+   *  любом разделе не должно влиять на остальные разделы, в остальных разделах
+   *  все должно остаться на том месте, где закончил пользователь». Поэтому
+   *  смена года идёт только в форму, где год сменили (`section`); прежнее
+   *  правило «все формы встают на новый год» (19.10.2026) снято. */
+  async function newYear(year: number, from: number | null, section: 1 | 2 | 3): Promise<boolean> {
     try {
       const r = await invoke<{ case: Case | null; fresh: boolean; created: boolean; typo: boolean; sections: number[] }>("case_open_year", { year });
       if (!r.case) {
         // Год без записей, но не следующий за набранным, — похоже на опечатку:
         // дело не заводится, формы не трогаются. Молча — нельзя: у Романа
         // 20.10.2026 смена года «ничего не сделала», и он не знал почему.
-        if (r.typo) warn(`Год ${year} — другие формы на него не перешли`,
+        if (r.typo) warn(`Год ${year} — похоже на опечатку`,
           `в ${year - 1} году нет ни одной записи — похоже на опечатку. Если год верный, просто набирайте: дело года появится с первой записью.`);
         return false;
       }
@@ -111,7 +116,7 @@ export default function App() {
       // форма — на прежнем: формы всё равно встают на него (Роман 20.10.2026).
       setMkCase(r.case);
       const freshSections = [1, 2, 3].filter((k) => (r.sections?.[k - 1] ?? 0) === 0);
-      setWorkYear((prev) => ({ year, fresh: r.fresh, freshSections, n: (prev?.n ?? 0) + 1 }));
+      setWorkYear((prev) => ({ year, fresh: r.fresh, freshSections, section, n: (prev?.n ?? 0) + 1 }));
       lastMove.current = r.fresh && from !== null ? { from, to: year } : null;
       // Убрать при возврате можно только дело, которое завела сама смена года:
       // заведённое человеком на экране «Дело» (с реквизитами) — нет.
@@ -412,13 +417,13 @@ export default function App() {
       {mkCase && (
         <ClergyProvider>
           <div hidden={screen !== "births"}>
-            <BirthForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} onYear={formYear} />
+            <BirthForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={(y, f) => newYear(y, f, 1)} onYear={formYear} />
           </div>
           <div hidden={screen !== "marriages"}>
-            <MarriageForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} onYear={formYear} />
+            <MarriageForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={(y, f) => newYear(y, f, 2)} onYear={formYear} />
           </div>
           <div hidden={screen !== "deaths"}>
-            <DeathForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} onYear={formYear} />
+            <DeathForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={(y, f) => newYear(y, f, 3)} onYear={formYear} />
           </div>
         </ClergyProvider>
       )}

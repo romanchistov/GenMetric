@@ -445,6 +445,8 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
   }
   useEffect(() => {
     if (!workYear) return;
+    // Год сменили в другой форме — эта остаётся, где была (Роман 24.11.2026).
+    if (workYear.section !== undefined && workYear.section !== 2) return;
     // Запись открыта на правку — год у неё свой; новый год дела форма
     // подхватит, когда правка закончится (restoreAfterEdit).
     if (editingId === null) setYear(workYear.year);

@@ -1714,7 +1714,9 @@ def incident_20261020_otvet_na_sborku_19_10():
     check("то же значение года — не смена руками", "if (v === year) return;" in read("src/newyear.ts"))
     check("страница из последней записи — только при смене года из формы, не при «Сохранить дело» (ревьюер 20.10.2026)",
           all("else if (editingId === null && workYear.freshSections) {" in read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")))
-    check("опечатка года — полосой, не молча (с 23.11.2026 — без совета про «Дело»)", "if (r.typo) warn(`Год ${year} — другие формы на него не перешли`," in app)
+    # С 24.11.2026 другие формы за годом не ходят вообще (Роман) — полоса
+    # говорит только про опечатку.
+    check("опечатка года — полосой, не молча (с 23.11.2026 — без совета про «Дело»)", "if (r.typo) warn(`Год ${year} — похоже на опечатку`," in app)
     check("«продолжить с места» не возвращает форму с начатого нового года",
           all("if (placedFresh.current) return;" in read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")))
     check("долг п. 77: вернулись на год с записями — страница из его последней записи",
@@ -2791,7 +2793,7 @@ def incident_20261124_skan_god_vkladki():
         src = strip_comments(read(f"src/{form}.tsx"))
         check(f"{form} сообщает год новой записи ({n}), запись на правке — нет",
               f"if (editingId === null && year !== null && year >= 1700 && year <= 1930) onYear?.({n}, year);" in src
-              and "onNewYear={newYear} onYear={formYear} />" in app.split(f"<{form} ", 1)[-1].split(chr(10), 1)[0])
+              and f"onNewYear={{(y, f) => newYear(y, f, {n})}} onYear={{formYear}} />" in app.split(f"<{form} ", 1)[-1].split(chr(10), 1)[0])
     # Ревьюер 24.11.2026: перелистнул и сразу на вкладку другого года — лист
     # запоминается под показанным годом, смена года ожидание не отменяет.
     scan = strip_comments(read("src/scan.tsx"))
@@ -2839,7 +2841,26 @@ def incident_20261124_skan_zapisi_drugogo_goda():
           "const toTyping = () => { if (!now.current.editing && now.current.visitLink) now.current.back(); };" in scan
           and "freeze(false); toTyping();" in scan)
 
+
+def incident_20261124_god_odnoj_formy():
+    """Роман 24.11.2026 (Бэклог р. 3 п. 15): «Нажатие + или -, изменение года в
+    любом разделе не должно влиять на остальные разделы, в остальных разделах
+    все должно остаться на том месте, где закончил пользователь». До этого
+    смена года на одной форме уводила и другие (правило 19.10.2026).
+
+    Защита: `workYear.section` — форма, где сменили год; другие формы его
+    пропускают. Стенд — s64 (шаги 1, 2б), s95.
+    """
+    app = strip_comments(read("src/App.tsx"))
+    check("смена года несёт форму, где её сделали",
+          "setWorkYear((prev) => ({ year, fresh: r.fresh, freshSections, section, n: (prev?.n ?? 0) + 1 }));" in app)
+    for form, n in (("BirthForm", 1), ("MarriageForm", 2), ("DeathForm", 3)):
+        src = strip_comments(read(f"src/{form}.tsx"))
+        check(f"{form}: год, сменённый в другой форме, её не трогает",
+              f"if (workYear.section !== undefined && workYear.section !== {n}) return;" in src)
+
 ИНЦИДЕНТЫ = [
+    incident_20261124_god_odnoj_formy,
     incident_20261124_skan_zapisi_drugogo_goda,
     incident_20261124_skan_god_vkladki,
     incident_20261124_skan_po_vkladkam,

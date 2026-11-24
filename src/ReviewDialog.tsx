@@ -120,7 +120,11 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   /** Группа, для которой нажали «Взять правку во всех» один раз: второе
    *  нажатие — «Да, взять в N записях» (как у замены в записях). */
-  const [sureGroup, setSureGroup] = useState<string | null>(null);
+  const [sureGroup, setSureGroupState] = useState<string | null>(null);
+  /** Когда появился вопрос: щелчок в первые 0,4 с — второй щелчок двойного,
+   *  а не ответ «Да» (ревьюер 24.11.2026). */
+  const sureAt = useRef(0);
+  const setSureGroup = (key: string | null) => { sureAt.current = Date.now(); setSureGroupState(key); };
   /** Ход действия «во всех» (п. 152): кнопки группы заменены полосой. */
   const [progress, setProgress] = useState<{ key: string; done: number; total: number; take: boolean } | null>(null);
   /** Итог (п. 153): плашка наверху окна, до его закрытия. */
@@ -133,9 +137,14 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
     for (const i of rows) for (const p of i.view?.pieces ?? []) byKey.set(p.key, [...(byKey.get(p.key) ?? []), i.id]);
     void runMany(ALL, rows, take, [...byKey.entries()]);
   }
+  /** «Оставить мои во всех» по всему разделу — тоже с вопросом: при 171
+   *  записи промах дорогой (ревьюер 24.11.2026). */
+  const KEEP_ALL = ALL + "оставить";
   async function runMany(key: string, rows: Item[], take: boolean, pairs: [string, number[]][] = [[key, rows.map((r) => r.id)]]) {
     if (taking !== null) return;
-    if (take && sureGroup !== key) { setSureGroup(key); return; }
+    const sure = take ? key : key === ALL ? KEEP_ALL : null;
+    if (sure !== null && sureGroup !== sure) { setSureGroup(sure); return; }
+    if (sure !== null && Date.now() - sureAt.current < 400) return;
     setSureGroup(null);
     const forms = dirtyForms();
     if (forms.length) {
@@ -178,11 +187,16 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
     // Все правки раздела: запись попадает в несколько правок, поэтому итог —
     // по закрытым записям, а не по вызовам.
     if (key === ALL) {
-      const rest = ids.length - sum.closed;
+      // Запись в нескольких правках: взятая одна правка может снять другую
+      // (пересохранение) — «уже нет» / «уже взята» тут не сбой, запись либо
+      // сверена, либо осталась ниже (ревьюер 24.11.2026).
+      const real = sum.failed.filter((f) => !/^в записи этой правки уже нет|^правка помощника уже взята/.test(f));
+      const failedAll = real.length
+        ? ` Не вышло в ${real.length}: ${[...new Set(real)].slice(0, 2).join("; ")} — эти строки решите по одной.` : "";
       setResult({
         text: (stopped ? `Остановлено: сверено ${sum.closed} из ${ids.length} записей, остальные — ниже.`
-               : take ? `✓ Правки помощника взяты: сверено ${sum.closed} записей.` : `✓ Оставлена ваша версия: сверено ${sum.closed} записей.`) +
-              (!stopped && rest > 0 ? ` Ещё ${rest} — ниже: в них отличия, которые решаются только целиком или по одной.` : "") + failed,
+               : take ? `✓ Правки помощника взяты в ${sum.closed} записях.` : `✓ Оставлена ваша версия в ${sum.closed} записях.`) +
+              (!stopped && sum.closed < ids.length ? " Остальные — ниже: в них отличия, которые решаются только целиком или по одной." : "") + failedAll,
         copy: sum.copy,
       });
       load(showDone);
@@ -290,12 +304,13 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
                               onClick={() => runAll(all, true)}>
                         {sureGroup === ALL ? `Да, взять все правки в ${all.length} записях` : `Взять все правки (${all.length})`}
                       </button>
-                      {sureGroup === ALL && (
+                      {(sureGroup === ALL || sureGroup === KEEP_ALL) && (
                         <button type="button" className="toggle small" onClick={() => setSureGroup(null)}>Отмена</button>
                       )}
-                      <button type="button" className="toggle small" data-review-keep-everything disabled={taking !== null}
+                      <button type="button" className={sureGroup === KEEP_ALL ? "danger small" : "toggle small"} data-review-keep-everything
+                              disabled={taking !== null}
                               title="Оставить вашу версию во всех правках этого раздела" onClick={() => runAll(all, false)}>
-                        Оставить мои во всех ({all.length})
+                        {sureGroup === KEEP_ALL ? `Да, оставить мои в ${all.length} записях` : `Оставить мои во всех (${all.length})`}
                       </button>
                     </div>
                   )}

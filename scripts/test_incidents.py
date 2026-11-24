@@ -1361,8 +1361,10 @@ def incident_20261010_skany_ryadom_s_formoj():
     check("новая запись получает разворот только из папки дела своего года; ссылка «скан» — из папки года записи",
           "current: (formYear) => (on && !visitBase.current && (year === null || formYear === year) ? file : null)," in scan
           and "if (entryYear !== year) {" in scan
-          and "if (entryYear !== year || visitBase.current) {" in scan
-          and 'if (entryYear !== null) visit(name, entryYear, "edit");' in scan)
+          and 'if (entryYear !== null) visit(name, entryYear, "edit");' in scan
+          # Свой год во время показа чужого — из отложенной папки вкладки.
+          and 'if (visitBase.current) return fromBase(name, away === "edit" ? "edit" : "link") ? "ok" : "нет файла";' in scan
+          and 'if (visitBase.current) { fromBase(name, "edit"); return; }' in scan)
     check("показ разворота по ссылке «скан» не затирает место набора",
           'leave(away ?? "link", i);' in scan and "data-scan-back" in scan)
     forms = [read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")]
@@ -2822,6 +2824,14 @@ def incident_20261124_skan_zapisi_drugogo_goda():
           "if dir.is_none() && year.is_some() && peek != Some(true) {" in main)
     check("совет «Откройте дело её года на экране «Дело»» больше не даётся",
           "Откройте дело её года" not in scan)
+    # Ревьюер 24.11.2026 (останавливал): запись другого года из «Поиска» меняет
+    # вкладку — чтение её места не отменяет ждущий показ листа.
+    i = scan.find("const keep = s.dir === dirRef.current ? peeked.current : null;")
+    check("смена вкладки не отменяет показ листа записи другого года",
+          0 <= i and "apply(s, true);" in scan[i:i + 120] and "if (!keepVisit) visitSeq.current++;" in scan)
+    check("начали набор в новой записи во время показа по ссылке — скан к набору",
+          "const toTyping = () => { if (!now.current.editing && now.current.visitLink) now.current.back(); };" in scan
+          and "freeze(false); toTyping();" in scan)
 
 ИНЦИДЕНТЫ = [
     incident_20261124_skan_zapisi_drugogo_goda,

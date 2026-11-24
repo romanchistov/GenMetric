@@ -61,6 +61,8 @@ export function listen<T>(event: string, fn: (payload: T) => void, ready?: () =>
 export type ScanSync = {
   on: boolean;
   year: number | null;
+  /** Показан скан записи другого года (задача 10) — подпись и в окне. */
+  visiting: number | null;
   dir: string | null;
   sep: string;
   files: string[];

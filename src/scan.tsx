@@ -162,12 +162,15 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   const stateNow = useRef<ScanFiles>(EMPTY);
   const atNow = useRef(0);
 
-  const apply = useCallback((next: ScanFiles) => {
+  const apply = useCallback((next: ScanFiles, keepVisit = false) => {
     loading.current = false;
     // Своя папка вкладки показана (выбор папки, вида листов, перечитывание) —
-    // показ чужого года кончился.
+    // показ чужого года кончился. Чтение места при смене вкладки ждущий
+    // показ не отменяет (`keepVisit`): запись другого года, открытая из
+    // «Поиска», меняет вкладку, и ответ места приходит позже просьбы показать
+    // её лист (ревьюер 24.11.2026).
     visitBase.current = null;
-    visitSeq.current++;
+    if (!keepVisit) visitSeq.current++;
     setVisiting(null);
     stateNow.current = next;
     atNow.current = Math.max(0, next.open ? next.files.indexOf(next.open) : 0);
@@ -232,7 +235,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
         // вкладки: открыли запись из «Поиска» — вкладка сменилась, а лист
         // записи остаётся; «к набору» вернёт на место этой вкладки.
         const keep = s.dir === dirRef.current ? peeked.current : null;
-        apply(s);
+        apply(s, true);
         peeked.current = null;
         if (keep) {
           const i = s.files.indexOf(keep);
@@ -401,12 +404,52 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   /** Задача 10 (замечание 8): скан записи другого года — из папки её года,
    *  только посмотреть. Место набора откладывается (`visitBase`), листание
    *  его не трогает, «к набору» и конец правки его возвращают. */
+  /** Показ чужого года кончился — вернуть отложенное место набора. */
+  const endVisit = useCallback((): { state: ScanFiles; index: number } | null => {
+    const base = visitBase.current;
+    visitSeq.current++;
+    if (!base) return null;
+    visitBase.current = null;
+    held.current = null;
+    heldFlipped.current = false;
+    peeked.current = null;
+    stateNow.current = base.state;
+    atNow.current = base.index;
+    setVisiting(null);
+    setAway(null);
+    setState(base.state);
+    setIndex(base.index);
+    return base;
+  }, []);
+  /** Во время показа чужого года — лист записи СВОЕГО года: показ кончается,
+   *  лист берётся из отложенной папки вкладки (ревьюер 24.11.2026: иначе
+   *  свой лист шёл с подписью «скан N года» и новая запись была без скана). */
+  const fromBase = useCallback((name: string, mode: "edit" | "link"): boolean => {
+    const base = endVisit();
+    if (!base) return false;
+    const i = base.state.files.indexOf(name);
+    const j = i < 0 ? base.state.other.indexOf(name) : -1;
+    if (i < 0 && j < 0) return false;
+    held.current = base.index;
+    if (j >= 0) {
+      heldFlipped.current = true;
+      setState({ ...base.state, files: base.state.other, other: base.state.files, kind: base.state.kind === "pdf" ? "images" : "pdf" });
+    }
+    if (mode === "edit") peeked.current = i >= 0 ? name : null;
+    setAway(mode);
+    setIndex(i >= 0 ? i : j);
+    return true;
+  }, [endVisit]);
+
   const visit = useCallback((name: string, y: number, mode: "edit" | "link") => {
     const mine = ++visitSeq.current;
     invoke<ScanFiles>("scan_state", { year: y, section: null, peek: true })
       .then((s) => {
         if (mine !== visitSeq.current) return;
+        // Запись на правке, а её листа не показать — чужой лист прежнего
+        // показа не остаётся (проверяющий 24.11.2026).
         if (!s.dir) {
+          if (mode === "edit") endVisit();
           if (mode === "link") warn(`Папка сканов ${y} года не выбрана`,
             `у записи — «${sheetLabel(name)}»; папку года выбирают на вкладке с этим годом кнопкой «папка…»`);
           return;
@@ -418,6 +461,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           if (j >= 0) { shown = { ...s, files: s.other, other: s.files, kind: s.kind === "pdf" ? "images" : "pdf" }; i = j; }
         }
         if (i < 0) {
+          if (mode === "edit") endVisit();
           if (mode === "link") warn("Скана нет в папке", `в папке «${s.dir}» (${y} год) нет «${sheetLabel(name)}»`);
           return;
         }
@@ -441,16 +485,16 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
         setVisiting(y);
       })
       .catch((e) => report("Не удалось прочитать папку сканов года записи", e));
-  }, []);
+  }, [endVisit]);
 
   // Окну скана — всё, что показать, при каждой перемене.
-  const sync: ScanSync = { on, year, dir: state.dir, sep: state.sep, files: state.files, missing: state.missing,
+  const sync: ScanSync = { on, year, visiting, dir: state.dir, sep: state.sep, files: state.files, missing: state.missing,
                            index: at, away, keepPlace, kind: state.kind, bad: state.bad };
   const syncRef = useRef(sync);
   syncRef.current = sync;
   useEffect(() => {
     if (on && detached) send("scan", "scan-sync", syncRef.current);
-  }, [on, detached, year, state, at, away, keepPlace]);
+  }, [on, detached, year, state, at, away, keepPlace, visiting]);
 
   // Открытый разворот запоминается — кроме показа записи на правке.
   const remembered = useRef<string | null>(null);
@@ -542,7 +586,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           visit(name, entryYear, away === "edit" ? "edit" : "link");
           return "ok";
         }
-        if (visitBase.current && entryYear !== null) { visit(name, entryYear, away === "edit" ? "edit" : "link"); return "ok"; }
+        if (visitBase.current) return fromBase(name, away === "edit" ? "edit" : "link") ? "ok" : "нет файла";
         const i = state.files.indexOf(name);
         if (i >= 0) {
           if (i !== at) leave(away ?? "link", i);
@@ -560,10 +604,12 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       current: (formYear) => (on && !visitBase.current && (year === null || formYear === year) ? file : null),
       peek: (name, entryYear) => {
         if (!name) return;
-        if (entryYear !== year || visitBase.current) {
+        if (entryYear !== year) {
           if (entryYear !== null) visit(name, entryYear, "edit");
+          else endVisit();
           return;
         }
+        if (visitBase.current) { fromBase(name, "edit"); return; }
         // Лист записи — запомнить для перечитывания при смене вкладки, только
         // если он показан (найден в папке); иначе прежняя отметка снимается.
         const i = state.files.indexOf(name);
@@ -579,18 +625,8 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       },
       back: () => {
         peeked.current = null;
-        visitSeq.current++;
+        if (endVisit()) return;
         setAway(null);
-        const base = visitBase.current;
-        if (base) {
-          visitBase.current = null;
-          held.current = null;
-          heldFlipped.current = false;
-          setVisiting(null);
-          setState(base.state);
-          setIndex(base.index);
-          return;
-        }
         if (held.current === null) return;
         const to = held.current;
         held.current = null;
@@ -613,7 +649,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           .catch((e) => report("Ширина колонки формы не сохранена", e));
       },
     };
-  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting]);
+  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting, endVisit, fromBase]);
 
   // Действия человека в окне скана — те же, что кнопками блока.
   const scanRef = useRef(scan);
@@ -768,8 +804,11 @@ export function useEntryScan(editing: boolean, year: number | null,
   // Страница сама при перелистывании (Роман 14.10.2026): только новая
   // запись, только видимая форма (три формы живут в окне одновременно),
   // только когда открыта папка дела года этой формы.
-  const now = useRef({ editing, open, turn });
-  now.current = { editing, open, turn };
+  const now = useRef({ editing, open, turn, visitLink: false, back: scan.back });
+  // Показан скан другого года по ссылке, а в новой записи начали набор —
+  // работа вернулась к набору: скан тоже (иначе запись легла бы без скана —
+  // проверяющий и ревьюер 24.11.2026).
+  now.current = { editing, open, turn, visitLink: scan.visiting !== null && scan.away === "link", back: scan.back };
   const subscribe = scan.onTurn;
   // Перешли на эту вкладку — страница не идёт за сканом, пока в форме не
   // начат набор (Роман 19.10.2026: «понадобилось пролистать несколько листов
@@ -794,13 +833,14 @@ export function useEntryScan(editing: boolean, year: number | null,
     // страница может идти за ним сразу (Роман: «да»).
     // Набор — буква, цифра, удаление; листание (Alt+PageDown) и переходы
     // (Tab, стрелки) заморозку не снимают.
+    const toTyping = () => { if (!now.current.editing && now.current.visitLink) now.current.back(); };
     const typed = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") freeze(false);
+      if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") { freeze(false); toTyping(); }
     };
     // Ввод без нажатия клавиши (вставка, системные методы ввода) и выбор из
     // подсказки мышью — тоже набор.
-    const input = () => freeze(false);
+    const input = () => { freeze(false); toTyping(); };
     const picked = (e: MouseEvent) => { if ((e.target as HTMLElement | null)?.closest?.(".suggest")) freeze(false); };
     el.addEventListener("mousedown", picked, true);
     el.addEventListener("keydown", typed, true);
@@ -1366,7 +1406,7 @@ export function ScanWindow() {
       kind: sync.kind, bad: sync.bad, setKind: (k) => act({ kind: "sheets", value: k }),
       step: (by) => act({ kind: "step", by }), goTo: (i) => act({ kind: "goto", index: i }),
       show: () => "ok", pickDir: () => act({ kind: "pick" }), askDir: () => undefined, current: () => null,
-      peek: () => undefined, back: () => act({ kind: "back" }), away: sync.away, visiting: null, onTurn: () => () => undefined,
+      peek: () => undefined, back: () => act({ kind: "back" }), away: sync.away, visiting: sync.visiting ?? null, onTurn: () => () => undefined,
       keepPlace: sync.keepPlace, setKeepPlace: (v) => act({ kind: "keep", on: v }),
       formWidth: FORM_WIDTH, setFormWidth: () => undefined,
     };

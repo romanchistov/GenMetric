@@ -1348,7 +1348,8 @@ def incident_20261010_skany_ryadom_s_formoj():
     remember = scan.split("const remembered = useRef", 1)[-1].split("const scan = useMemo", 1)[0]
     check("открытый разворот запоминается, только когда запись ушла, и не во время показа записи на правке",
           "held.current !== null" in remember
-          and remember.index("window.setTimeout") < remember.index("remembered.current = `${year}|${file}`;"))
+          # С 24.11.2026 (задача 3) в отметке — и раздел.
+          and remember.index("window.setTimeout") < remember.index("remembered.current = `${year}|${sect}|${file}`;"))
     check("на следующем развороте — то же место: набор картинок у просмотрщика один, с сохранением вида",
           "sequenceMode: true" in scan and "preserveViewport: true" in scan)
     entry = scan.split("export function useEntryScan", 1)[-1].split("export function ScanLink", 1)[0]
@@ -1841,7 +1842,8 @@ def incident_20261103_tiff_i_pdf_i_dolg_e2e():
           "genmetric_core::caught(|| sheets.serve(&full))" in serve
           and main.count("#[tauri::command(async)]\nfn scan_") == 3)
     check("место в картинках и в листах PDF помнится раздельно (проверяющий)",
-          'format!("scan_last_pdf_{y}")' in main and "let last_key = scan_last_key(year, &file);" in main)
+          # С 24.11.2026 (задача 3) ключ — ещё и по разделу.
+          'format!("scan_last_pdf_{y}")' in main and "let last_key = scan_last_key(year, &file, section);" in main)
 
 
 def incident_20261103_obedinenie_punktov():
@@ -2492,8 +2494,12 @@ def incident_20261019_oshibki_svyazej():
     check("ключ досье не зависит от номера упоминания (долг п. 74)", 'format!("{}.{}", r.entry_id, r.sort_order)' in family
           and "r.id" not in family)
     scan = read("src/scan.tsx")
-    check("страница не идёт за сканом после перехода на вкладку, пока не начат набор (Alt+PageDown набором не считается)",
-          'if (visible && !shown) freeze(true);' in scan and "if (e.altKey || e.ctrlKey || e.metaKey) return;" in scan)
+    # С 24.11.2026 (задача 3, Роман: «да») у вкладки свой лист — заморозки
+    # при переходе нет; листание (Alt+PageDown) по-прежнему не считается
+    # набором.
+    check("переход на вкладку не замораживает листание (свой лист у вкладки); Alt+PageDown набором не считается",
+          'if (visible && !shown) freeze(true);' not in scan and "if (e.altKey || e.ctrlKey || e.metaKey) return;" in scan
+          and 'invoke<ScanFiles>("scan_state", { year, section })' in scan)
     check("блок скана изначально включён, выключенный руками — нет", 'if (v !== "0") setOnState(true);' in scan)
     check("новый год на любой форме — дело года, все формы с чистого листа, окно папки; дальний пустой год (опечатка) — нет",
           'invoke<{ case: Case | null; fresh: boolean; created: boolean; typo: boolean; sections: number[] }>("case_open_year", { year })' in read("src/App.tsx")
@@ -2733,7 +2739,28 @@ def incident_20261124_dve_prokrutki_prihody():
     check("у списка приходов нет своей формулы высоты от экрана", i >= 0 and "100vh" not in css[i:css.find("}", i)])
 
 
+def incident_20261124_skan_po_vkladkam():
+    """Роман, замечание 14 к сборке 19.10 (задача 3, сделана 24.11.2026): у
+    «Рождений», «Браков» и «Смертей» каждого года — свой открытый скан; новый
+    пустой год не спрашивает папку заново (дополнение 03.11).
+
+    Защита: место — `scan_last_<год>_<раздел>` (общее место года —
+    запасным), окно скана знает видимую вкладку; новый год — `scan_inherit`.
+    Стенд — _стенд/s90.mjs.
+    """
+    main = strip_comments(read("src-tauri/src/main.rs"))
+    check("место скана — у вкладки, общее место года — запасным",
+          'keys.push(format!("scan_last_{y}_{s}"));' in main and "fn scan_inherit(" in main)
+    scan = strip_comments(read("src/scan.tsx"))
+    check("окно скана читает и запоминает место видимой вкладки",
+          'invoke<ScanFiles>("scan_state", { year, section })' in scan
+          and 'invoke("scan_remember", { year, file, section: sect })' in scan)
+    check("новый год без своей папки — папка прежнего, без окна выбора",
+          'invoke<boolean>("scan_inherit", { from, to })' in scan and "askDir(y, was)" in read("src/newyear.ts"))
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261124_skan_po_vkladkam,
     incident_20261124_dve_prokrutki_prihody,
     incident_20261120_sliyanie_skrytye_otlichiya,
     incident_20261120_fod_u_vseh_zapisej_goda,

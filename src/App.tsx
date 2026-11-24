@@ -135,6 +135,11 @@ export default function App() {
   }
   type Screen = "case" | "births" | "marriages" | "deaths" | "about" | "search";
   const [screen, setScreen] = useState<Screen>("case");
+  // Вкладка для скана (задача 3): у «Рождений», «Браков» и «Смертей» —
+  // свой лист; на «Деле», «ⓘ» и «Поиске» скан остаётся на прежней вкладке.
+  const lastFormSection = useRef<number | null>(null);
+  const scanSection = screen === "births" ? 1 : screen === "marriages" ? 2 : screen === "deaths" ? 3 : lastFormSection.current;
+  lastFormSection.current = scanSection;
 
   // --- Экран «Поиск» (Роман 03.10 и 09.10.2026) ---
   // Открывается кнопкой на «Деле» и Ctrl+F из любого места. Из блока персоны
@@ -301,7 +306,7 @@ export default function App() {
   }
 
   return (
-    <ScanProvider year={mkCase?.year ?? null} ready={!!startup && !startup.error}>
+    <ScanProvider year={mkCase?.year ?? null} section={scanSection} ready={!!startup && !startup.error}>
     <ScanShell>
     <div className={screen === "search" ? "app wide" : "app"}>
       <ErrorBar />

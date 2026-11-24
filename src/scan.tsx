@@ -79,7 +79,7 @@ type Scan = {
   /** Системное окно выбора папки. */
   pickDir: () => void;
   /** Новый год: открыть выбор папки, если у этого года её нет. */
-  askDir: (year: number) => void;
+  askDir: (year: number, from?: number | null) => void;
   /** Файл для новой записи года `year`: открытый разворот, если блок включён и папка — этого дела. */
   current: (year: number | null) => string | null;
   /** Запись открыта на правку: показать её разворот, запомнив место набора. */
@@ -113,7 +113,9 @@ export function useScan(): Scan {
 export const FORM_WIDTH = 470;
 const FORM_MIN = 380;
 
-export function ScanProvider({ year, ready, children }: { year: number | null; ready: boolean; children: React.ReactNode }) {
+/** `section` — видимая вкладка (1 рождения, 2 браки, 3 смерти): у каждой
+ *  вкладки свой лист в папке года (задача 3, Роман 24.11.2026). */
+export function ScanProvider({ year, section, ready, children }: { year: number | null; section: number | null; ready: boolean; children: React.ReactNode }) {
   const [on, setOnState] = useState(false);
   const [state, setState] = useState<ScanFiles>(EMPTY);
   const [index, setIndex] = useState(0);
@@ -130,6 +132,14 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
   const [away, setAway] = useState<"edit" | "link" | null>(null);
   const yearRef = useRef(year);
   yearRef.current = year;
+  const sectionRef = useRef(section);
+  sectionRef.current = section;
+  /** Раздел, чьё место сейчас показано: запоминание листа — под него, а не под
+   *  вкладку, на которую только что перешли (её место ещё читается). */
+  const loadedSection = useRef<number | null>(null);
+  /** Год, с которого перешли на новый (`askDir`): его папка — новому году. */
+  const askFrom = useRef<number | null>(null);
+  const [reloadDir, setReloadDir] = useState(0);
 
   const apply = useCallback((next: ScanFiles) => {
     held.current = null;
@@ -170,21 +180,38 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
   useEffect(() => {
     if (!ready) return;
     const mine = ++loadSeq.current;
-    invoke<ScanFiles>("scan_state", { year })
+    invoke<ScanFiles>("scan_state", { year, section })
       .then((s) => {
         if (mine !== loadSeq.current) return;
         apply(s);
         loadedYear.current = year;
+        loadedSection.current = section;
         // Просьба выбрать папку — только для своего года; прочитана папка
         // другого года — просьба устарела и позже окно не выскочит
         // (ревьюер 19.10.2026).
         if (askFor.current !== null) {
-          if (askFor.current === year && !s.dir) pickRef.current();
+          if (askFor.current === year && !s.dir) {
+            // Новый год без своей папки — папка и место прежнего (задача 3,
+            // Роман 03.11 и 24.11.2026); у прежнего нет — окно выбора.
+            const from = askFrom.current;
+            const to = year;
+            if (from !== null && to !== null) {
+              invoke<boolean>("scan_inherit", { from, to })
+                .then((given) => {
+                  if (!given) { pickRef.current(); return; }
+                  warn(`Сканы ${to} года — из той же папки, что у ${from}`,
+                       "другая папка — кнопка «папка…» в блоке скана");
+                  setReloadDir((n) => n + 1);
+                })
+                .catch((e) => report("Папка сканов нового года не передана", e));
+            } else pickRef.current();
+          }
           askFor.current = null;
+          askFrom.current = null;
         }
       })
       .catch((e) => report("Не удалось прочитать папку сканов", e));
-  }, [year, ready, apply]);
+  }, [year, section, ready, apply, reloadDir]);
 
   // Окно: блок включён — узкое окно расширяется, выключен — возвращается.
   // Скан отдельным окном — блока нет, окно программы как без скана.
@@ -254,8 +281,8 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
     // даёт подмена `window.__pickScanDir`; дальше всё настоящее.
     const hook = (window as unknown as { __pickScanDir?: () => string | null }).__pickScanDir;
     const asked = hook
-      ? Promise.resolve(hook()).then((path) => (path ? invoke<ScanFiles>("scan_set_dir", { year: yearRef.current, path }) : null))
-      : invoke<ScanFiles | null>("scan_pick_dir", { year: yearRef.current });
+      ? Promise.resolve(hook()).then((path) => (path ? invoke<ScanFiles>("scan_set_dir", { year: yearRef.current, path, section: sectionRef.current }) : null))
+      : invoke<ScanFiles | null>("scan_pick_dir", { year: yearRef.current, section: sectionRef.current });
     asked
       .then((s) => { if (s && mine === loadSeq.current) chosen(s); })
       .catch((e) => report("Не удалось открыть папку сканов", e));
@@ -265,13 +292,16 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
   /** Новый год на форме (Роман 19.10.2026): «программа должна автоматически
    *  вызывать окно выбора папки со сканами» — если у года папки нет. Папка
    *  года читается после смены дела; спрашиваем, когда она прочитана. */
-  const askDir = useCallback((forYear: number) => {
-    if (loadedYear.current === forYear) {
-      if (!dirRef.current) pickDir();
-      return;
-    }
+  const askDir = useCallback((forYear: number, fromYear?: number | null) => {
+    askFrom.current = fromYear ?? null;
     askFor.current = forYear;
-  }, [pickDir]);
+    if (loadedYear.current === forYear) {
+      // Папка года уже прочитана — перечитать: решение (передать папку или
+      // спросить) принимается в одном месте, при чтении.
+      if (!dirRef.current) setReloadDir((n) => n + 1);
+      else { askFor.current = null; askFrom.current = null; }
+    }
+  }, []);
 
   // Перетаскивание папки или файла-скана на окно программы. Событие даёт
   // само окно программы; в браузере стенда его нет — там и не подписываемся.
@@ -284,7 +314,7 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
     let gone = false;
     const dropped = (path: string) => {
       const mine = ++loadSeq.current;
-      invoke<ScanFiles>("scan_set_dir", { year: yearRef.current, path, dropped: true })
+      invoke<ScanFiles>("scan_set_dir", { year: yearRef.current, path, dropped: true, section: sectionRef.current })
         .then((s) => {
           if (mine !== loadSeq.current) return;
           // Ничего не изменилось и открывать нечего — бросили не скан.
@@ -318,12 +348,13 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
   // Открытый разворот запоминается — кроме показа записи на правке.
   const remembered = useRef<string | null>(null);
   useEffect(() => {
-    if (!file || held.current !== null || remembered.current === `${year}|${file}`) return;
+    const sect = loadedSection.current;
+    if (!file || held.current !== null || remembered.current === `${year}|${sect}|${file}`) return;
     // Отметка «запомнено» — только когда запись ушла: отменённое ожидание
     // (пролистали дальше, открыли запись) не должно считаться сделанным.
     const timer = window.setTimeout(() => {
-      remembered.current = `${year}|${file}`;
-      invoke("scan_remember", { year, file }).catch((e) => report("Открытый скан не запомнен", e));
+      remembered.current = `${year}|${sect}|${file}`;
+      invoke("scan_remember", { year, file, section: sect }).catch((e) => report("Открытый скан не запомнен", e));
     }, 600);
     return () => window.clearTimeout(timer);
   }, [file, year]);
@@ -419,7 +450,7 @@ export function ScanProvider({ year, ready, children }: { year: number | null; r
       bad: state.bad,
       setKind: (kind) => {
         const mine = ++loadSeq.current;
-        invoke<ScanFiles>("scan_set_kind", { year, kind })
+        invoke<ScanFiles>("scan_set_kind", { year, kind, section: sectionRef.current })
           .then((s) => { if (mine === loadSeq.current) apply(s); })
           .catch((e) => report("Не удалось переключить вид сканов", e));
       },
@@ -605,15 +636,11 @@ export function useEntryScan(editing: boolean, year: number | null,
   useEffect(() => {
     const el = root?.current;
     if (!el) return;
-    let shown = el.offsetParent !== null;
     // Состояние — и в атрибуте формы: по нему его видят стенд и разбор.
     const freeze = (v: boolean) => { frozen.current = v; el.setAttribute("data-scan-frozen", v ? "1" : "0"); };
-    const watch = new IntersectionObserver(() => {
-      const visible = el.offsetParent !== null;
-      if (visible && !shown) freeze(true);
-      shown = visible;
-    });
-    watch.observe(el);
+    // С 24.11.2026 (задача 3) смена вкладки скан не «замораживает»: у вкладки
+    // свой лист (scan_last_<год>_<раздел>), листание идёт по её месту, и
+    // страница может идти за ним сразу (Роман: «да»).
     // Набор — буква, цифра, удаление; листание (Alt+PageDown) и переходы
     // (Tab, стрелки) заморозку не снимают.
     const typed = (e: KeyboardEvent) => {
@@ -627,7 +654,7 @@ export function useEntryScan(editing: boolean, year: number | null,
     el.addEventListener("mousedown", picked, true);
     el.addEventListener("keydown", typed, true);
     el.addEventListener("input", input, true);
-    return () => { watch.disconnect(); el.removeEventListener("keydown", typed, true); el.removeEventListener("input", input, true); el.removeEventListener("mousedown", picked, true); };
+    return () => { el.removeEventListener("keydown", typed, true); el.removeEventListener("input", input, true); el.removeEventListener("mousedown", picked, true); };
   }, [root]);
   useEffect(() => subscribe((by) => {
     const { editing: busy, open: file, turn: fn } = now.current;

@@ -14,7 +14,7 @@ import { useEffect, useRef } from "react";
  */
 export function useNewYear(year: number | null, editing: boolean,
                            onNewYear: ((year: number, from: number | null) => Promise<boolean>) | undefined,
-                           askDir: (year: number) => void) {
+                           askDir: (year: number, from?: number | null) => void) {
   const pending = useRef(false);
   const done = useRef<number | null>(null);
   /** Год формы до смены руками: «следующий год» и возврат считаются от него. */
@@ -25,7 +25,7 @@ export function useNewYear(year: number | null, editing: boolean,
     done.current = y;
     const was = from.current;
     from.current = null;
-    void onNewYear(y, was).then((fresh) => { if (fresh) askDir(y); });
+    void onNewYear(y, was).then((fresh) => { if (fresh) askDir(y, was); });
   }
   useEffect(() => {
     if (!pending.current) return;

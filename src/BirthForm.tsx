@@ -101,7 +101,7 @@ type PersonPayload = {
   uncertain: string | null;
 };
 
-export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYear }: FormProps) {
+export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYear, onYear }: FormProps) {
   // Год на форме сменили на год без записей — все формы встают на него с
   // чистого листа, а если у года нет папки сканов — окно выбора папки
   // (Роман 19.10.2026, спека 2026-10-19-oshibki-svyazej-i-dovodka, Ж2.7).
@@ -284,6 +284,11 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
   // Заказчик 22.09.2026 индексирует в программе по-настоящему; до этого
   // единственный способ поправить запись был перенабрать её.
   const [editingId, setEditingId] = useState<number | null>(null);
+  // Год скана этой вкладки — год новой записи формы (Бэклог р. 3 п. 16).
+  // Недонабранный год (1, 19, 190) скан не дёргает.
+  useEffect(() => {
+    if (editingId === null && year !== null && year >= 1700 && year <= 1930) onYear?.(1, year);
+  }, [year, editingId, onYear]);
   /** Реквизиты записи на правке, изменённые «изменить» (задача 16): уходят
    *  в `entry_save` как `reqs`. Другая запись или конец правки — сброс. */
   const [reqsEdit, setReqsEdit] = useState<Case | null>(null);

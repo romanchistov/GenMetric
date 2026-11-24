@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FIND_KEY } from "./keys";
 import { invoke } from "@tauri-apps/api/core";
 import ErrorBar from "./ErrorBar";
@@ -140,6 +140,14 @@ export default function App() {
   const lastFormSection = useRef<number | null>(null);
   const scanSection = screen === "births" ? 1 : screen === "marriages" ? 2 : screen === "deaths" ? 3 : lastFormSection.current;
   lastFormSection.current = scanSection;
+  // Год для скана — год формы этой вкладки, а не общий год окна (Роман
+  // 24.11.2026, Бэклог р. 3 п. 16): смерти 1904 и рождения 1905 — у каждой
+  // свои папка и лист; общий год давал обеим одну папку, выбор папки на одной
+  // вкладке затирал папку чужого года, а запись сохранялась без скана.
+  const [formYears, setFormYears] = useState<Partial<Record<1 | 2 | 3, number>>>({});
+  const formYear = useCallback((section: 1 | 2 | 3, year: number) =>
+    setFormYears((p) => (p[section] === year ? p : { ...p, [section]: year })), []);
+  const scanYear = (scanSection !== null ? formYears[scanSection as 1 | 2 | 3] : undefined) ?? mkCase?.year ?? null;
 
   // --- Экран «Поиск» (Роман 03.10 и 09.10.2026) ---
   // Открывается кнопкой на «Деле» и Ctrl+F из любого места. Из блока персоны
@@ -306,7 +314,7 @@ export default function App() {
   }
 
   return (
-    <ScanProvider year={mkCase?.year ?? null} section={scanSection} ready={!!startup && !startup.error}>
+    <ScanProvider year={scanYear} section={scanSection} ready={!!startup && !startup.error}>
     <ScanShell>
     <div className={screen === "search" ? "app wide" : "app"}>
       <ErrorBar />
@@ -404,13 +412,13 @@ export default function App() {
       {mkCase && (
         <ClergyProvider>
           <div hidden={screen !== "births"}>
-            <BirthForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} />
+            <BirthForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} onYear={formYear} />
           </div>
           <div hidden={screen !== "marriages"}>
-            <MarriageForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} />
+            <MarriageForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} onYear={formYear} />
           </div>
           <div hidden={screen !== "deaths"}>
-            <DeathForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} />
+            <DeathForm mkCase={mkCase} onSaved={entrySaved} workYear={workYear} openReq={openReq} onNewYear={newYear} onYear={formYear} />
           </div>
         </ClergyProvider>
       )}

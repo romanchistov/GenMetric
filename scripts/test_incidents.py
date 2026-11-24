@@ -2765,7 +2765,30 @@ def incident_20261124_skan_po_vkladkam():
           'invoke<boolean>("scan_inherit", { from, to })' in scan and "askDir(y, was)" in read("src/newyear.ts"))
 
 
+
+def incident_20261124_skan_god_vkladki():
+    """Роман 24.11.2026, сборка 0d89e00 (Бэклог р. 3 п. 16): смерти набираются
+    за 1904 год, рождения — за 1905. На «Рождениях» — скан смертей; папка,
+    выбранная там, становилась папкой чужого года; на «Смертях» — скан
+    рождений, запись смерти сохранилась без скана, «Стр.» не шла за листанием.
+
+    Причина: окно скана брало общий год окна (`mkCase.year`), а у каждой
+    формы свой год. Защита: формы сообщают год новой записи (`onYear`), окно
+    скана берёт год видимой вкладки. Стенд — _стенд/s91.mjs.
+    """
+    app = strip_comments(read("src/App.tsx"))
+    check("окно скана — на году формы видимой вкладки, а не на общем году окна",
+          "<ScanProvider year={scanYear} section={scanSection}" in app
+          and "formYears[scanSection as 1 | 2 | 3]" in app
+          and "<ScanProvider year={mkCase?.year" not in app)
+    for form, n in (("BirthForm", 1), ("MarriageForm", 2), ("DeathForm", 3)):
+        src = strip_comments(read(f"src/{form}.tsx"))
+        check(f"{form} сообщает год новой записи ({n}), запись на правке — нет",
+              f"if (editingId === null && year !== null && year >= 1700 && year <= 1930) onYear?.({n}, year);" in src
+              and "onNewYear={newYear} onYear={formYear} />" in app.split(f"<{form} ", 1)[-1].split(chr(10), 1)[0])
+
 ИНЦИДЕНТЫ = [
+    incident_20261124_skan_god_vkladki,
     incident_20261124_skan_po_vkladkam,
     incident_20261124_dve_prokrutki_prihody,
     incident_20261120_sliyanie_skrytye_otlichiya,

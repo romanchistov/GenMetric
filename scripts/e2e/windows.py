@@ -1171,6 +1171,21 @@ def pdf_tiff_scans(driver, root, scan_attr):
           "error" not in per_tab and per_tab["deaths"] == "дело 1897.pdf#2" and per_tab["deaths2"] == "дело 1897.pdf#2"
           and per_tab["marr"] == "дело 1897.pdf#3" and per_tab["given"] is True and per_tab["again"] is False
           and per_tab["open1777"] == "дело 1897.pdf#2", str(per_tab))
+    # Задача 10 (24.11.2026): скан записи другого года — только посмотреть:
+    # scan_state с peek не забирает себе папку, выбранную «без года».
+    peeked = driver.execute_async_script(
+        "const done = arguments[arguments.length - 1];"
+        "const call = window.__TAURI_INTERNALS__.invoke;"
+        "(async () => {"
+        "  await call('scan_set_dir', {year: null, path: arguments[0], section: null});"
+        "  const look = await call('scan_state', {year: 1666, section: null, peek: true});"
+        "  const loose = await call('get_setting', {key: 'scan_dir_'});"
+        "  const own = await call('scan_state', {year: 1666, section: null});"
+        "  return {look: look.dir, loose, own: own.dir};"
+        "})().then(done, (e) => done({error: String(e)}));", str(folder))
+    check("скан другого года (peek) не забирает папку «без года», обычное чтение — забирает",
+          "error" not in peeked and peeked["look"] is None and bool(peeked["loose"])
+          and peeked["own"] == peeked["loose"], str(peeked))
     # Картинкой, как просмотрщик: img-src разрешает протокол scan, ответ 403 — ошибка загрузки.
     blocked = driver.execute_async_script(
         "const done = arguments[arguments.length - 1]; const img = new Image();"

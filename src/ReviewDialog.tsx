@@ -26,6 +26,8 @@ type EditView = { head: string; pieces: Piece[]; other: string[] };
 type ManyDone = { closed: number; left: number; failed: string[]; copy: string | null };
 /** Строк в одном вызове «во всех»: между частями окно показывает ход (п. 152). */
 const CHUNK = 25;
+/** Метка действия над всеми правками раздела (задача 17) — вместо ключа правки. */
+const ALL = "\u0000все правки";
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 const KIND: Record<Item["kind"], string> = {
@@ -123,7 +125,15 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
   const [progress, setProgress] = useState<{ key: string; done: number; total: number; take: boolean } | null>(null);
   /** Итог (п. 153): плашка наверху окна, до его закрытия. */
   const [result, setResult] = useState<{ text: string; copy: string | null } | null>(null);
-  async function runMany(key: string, rows: Item[], take: boolean) {
+  /** Задача 17 (Роман 24.11.2026: 171 правка в десятках групп): все правки
+   *  раздела разом — по каждой правке, как «во всех» в группе; копия прихода
+   *  — одна, перед первой частью. */
+  function runAll(rows: Item[], take: boolean) {
+    const byKey = new Map<string, number[]>();
+    for (const i of rows) for (const p of i.view?.pieces ?? []) byKey.set(p.key, [...(byKey.get(p.key) ?? []), i.id]);
+    void runMany(ALL, rows, take, [...byKey.entries()]);
+  }
+  async function runMany(key: string, rows: Item[], take: boolean, pairs: [string, number[]][] = [[key, rows.map((r) => r.id)]]) {
     if (taking !== null) return;
     if (take && sureGroup !== key) { setSureGroup(key); return; }
     setSureGroup(null);
@@ -135,18 +145,24 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
     setTaking(-1);
     setResult(null);
     const ids = rows.map((r) => r.id);
+    const total = pairs.reduce((n, [, g]) => n + g.length, 0);
     const sum: ManyDone = { closed: 0, left: 0, failed: [], copy: null };
     let stopped = false;
     // Ход — только если действие идёт дольше полсекунды (Роман: «Оставить
     // мою» мгновенное, индикатор ему не нужен).
-    const slow = window.setTimeout(() => setProgress((p) => p ?? { key, done: 0, total: ids.length, take }), 500);
+    const slow = window.setTimeout(() => setProgress((p) => p ?? { key, done: 0, total, take }), 500);
     try {
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const r = await invoke<ManyDone>("merge_piece_many", { reviewIds: ids.slice(i, i + CHUNK), key, take, backup: i === 0 });
-        sum.closed += r.closed; sum.left += r.left; sum.failed.push(...r.failed); sum.copy = sum.copy ?? r.copy;
-        if (take) tookAny.current = tookAny.current || r.closed + r.left > 0;
-        const done = Math.min(i + CHUNK, ids.length);
-        setProgress((p) => p && { ...p, done });
+      let done = 0;
+      for (const [piece, group] of pairs) {
+        for (let i = 0; i < group.length; i += CHUNK) {
+          const part = group.slice(i, i + CHUNK);
+          const r = await invoke<ManyDone>("merge_piece_many", { reviewIds: part, key: piece, take, backup: done === 0 });
+          sum.closed += r.closed; sum.left += r.left; sum.failed.push(...r.failed); sum.copy = sum.copy ?? r.copy;
+          if (take) tookAny.current = tookAny.current || r.closed + r.left > 0;
+          done += part.length;
+          const now = done;
+          setProgress((p) => p && { ...p, done: now });
+        }
       }
     } catch (e) {
       stopped = true;
@@ -159,6 +175,20 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
     const n = sum.closed + sum.left;
     const failed = sum.failed.length
       ? ` Не вышло в ${sum.failed.length}: ${[...new Set(sum.failed)].slice(0, 2).join("; ")} — эти строки решите по одной.` : "";
+    // Все правки раздела: запись попадает в несколько правок, поэтому итог —
+    // по закрытым записям, а не по вызовам.
+    if (key === ALL) {
+      const rest = ids.length - sum.closed;
+      setResult({
+        text: (stopped ? `Остановлено: сверено ${sum.closed} из ${ids.length} записей, остальные — ниже.`
+               : take ? `✓ Правки помощника взяты: сверено ${sum.closed} записей.` : `✓ Оставлена ваша версия: сверено ${sum.closed} записей.`) +
+              (!stopped && rest > 0 ? ` Ещё ${rest} — ниже: в них отличия, которые решаются только целиком или по одной.` : "") + failed,
+        copy: sum.copy,
+      });
+      load(showDone);
+      refocus();
+      return;
+    }
     setResult({
       // Сбой посередине — без галочки: сделанное до него сохранено, но не всё (ревьюер 17.11.2026).
       text: (stopped ? `Остановлено на ${n} из ${ids.length}: ${take ? "правка взята" : "ваша версия оставлена"} в ${n} записях, остальные — ниже.`
@@ -240,6 +270,38 @@ export default function ReviewDialog({ onClose, onOpenEntry }: {
                 группе меняет только поля своей правки — остальное в записях остаётся как было.
               </p>
             )}
+            {kind === "merge_edit" && (() => {
+              // Задача 17: все правки раздела разом — над первой группой.
+              const all = rows.filter((i) => !i.done && (i.view?.pieces.length ?? 0) > 0);
+              if (all.length < 2) return null;
+              const run = progress?.key === ALL ? progress : null;
+              return (
+                <div className="reviewgroup reviewall" data-review-all={all.length}>
+                  {run ? (
+                    <div className="reviewprogress" data-review-progress>
+                      {run.take ? `Беру все правки помощника: ${run.done} из ${run.total}` : `Оставляю вашу версию: ${run.done} из ${run.total}`}
+                      <progress max={run.total} value={run.done} />
+                    </div>
+                  ) : (
+                    <div className="row">
+                      <button type="button" className={sureGroup === ALL ? "danger small" : "toggle small"} data-review-take-everything
+                              disabled={taking !== null}
+                              title="Взять у помощника все правки, видные в этом разделе, во всех записях; перед этим программа делает копию прихода"
+                              onClick={() => runAll(all, true)}>
+                        {sureGroup === ALL ? `Да, взять все правки в ${all.length} записях` : `Взять все правки (${all.length})`}
+                      </button>
+                      {sureGroup === ALL && (
+                        <button type="button" className="toggle small" onClick={() => setSureGroup(null)}>Отмена</button>
+                      )}
+                      <button type="button" className="toggle small" data-review-keep-everything disabled={taking !== null}
+                              title="Оставить вашу версию во всех правках этого раздела" onClick={() => runAll(all, false)}>
+                        Оставить мои во всех ({all.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {big.map(([key, g]) => {
               const more = g.filter((i) => i.view!.pieces.length > 1 || i.view!.other.length > 0).length;
               const run = progress?.key === key ? progress : null;

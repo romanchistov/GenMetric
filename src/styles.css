@@ -1205,6 +1205,8 @@ table.events tr.part b.what, table.events tr.clergy b.what { font-weight: 500; c
 .scanblock { margin-top: 0.6em; }
 .scanlink { margin-left: 0.5em; font-size: 0.85em; }
 .scanbind { font-weight: normal; }
+/* Скан записи другого года (задача 10): видно, чья папка показана. */
+.scanvisit { font-size: 0.78rem; color: #92400e; background: #fef3c7; border-radius: 0.25em; padding: 0.1em 0.45em; white-space: nowrap; }
 
 /* Окно с вопросом при включённом скане — только над колонкой формы: скан
    рядом виден и доступен мыши (сверить имя по скану — главный случай). */

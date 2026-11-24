@@ -88,6 +88,9 @@ type Scan = {
   back: () => void;
   /** Показан не тот разворот, на котором шёл набор: запись на правке или ссылка «скан». */
   away: "edit" | "link" | null;
+  /** Показан скан записи другого года — из папки её года (задача 10); место
+   *  набора отложено до «к набору» или конца правки. */
+  visiting: number | null;
   /** Подписаться на перелистывание человеком на один файл (Alt+PageDown,
    *  Alt+PageUp, «←» и «→») — по нему форма сдвигает страницу (Роман
    *  14.10.2026). Переход по номеру, ссылка «скан», показ записи на правке не
@@ -150,9 +153,24 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   const loading = useRef(false);
   /** Запоминание, которое ждёт своих 0,6 с: смена вкладки делает его сразу. */
   const pendingRemember = useRef<{ year: number | null; section: number | null; file: string } | null>(null);
+  /** Задача 10: показан скан записи другого года — место набора (папка и лист
+   *  вкладки) отложено здесь; смена вкладки кладёт сюда место новой вкладки. */
+  const visitBase = useRef<{ state: ScanFiles; index: number } | null>(null);
+  const visitSeq = useRef(0);
+  const [visiting, setVisiting] = useState<number | null>(null);
+  /** Показанное сейчас — для отложенного места: ответ приходит позже перерисовки. */
+  const stateNow = useRef<ScanFiles>(EMPTY);
+  const atNow = useRef(0);
 
   const apply = useCallback((next: ScanFiles) => {
     loading.current = false;
+    // Своя папка вкладки показана (выбор папки, вида листов, перечитывание) —
+    // показ чужого года кончился.
+    visitBase.current = null;
+    visitSeq.current++;
+    setVisiting(null);
+    stateNow.current = next;
+    atNow.current = Math.max(0, next.open ? next.files.indexOf(next.open) : 0);
     held.current = null;
     heldFlipped.current = false;
     setAway(null);
@@ -205,6 +223,11 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       .then((s) => {
         if (mine !== loadSeq.current) return;
         loading.current = false;
+        if (visitBase.current) {
+          // Показан скан записи другого года (задача 10) — он остаётся, а
+          // место новой вкладки становится местом возврата.
+          visitBase.current = { state: s, index: Math.max(0, s.open ? s.files.indexOf(s.open) : 0) };
+        } else {
         // Показ записи на правке (peek) в той же папке переживает смену
         // вкладки: открыли запись из «Поиска» — вкладка сменилась, а лист
         // записи остаётся; «к набору» вернёт на место этой вкладки.
@@ -219,6 +242,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
             setAway("edit");
             setIndex(i);
           }
+        }
         }
         loadedYear.current = year;
         loadedSection.current = section;
@@ -371,6 +395,53 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   const count = state.files.length;
   const at = Math.min(index, Math.max(0, count - 1));
   const file = count > 0 && !state.missing ? state.files[at] : null;
+  stateNow.current = state;
+  atNow.current = at;
+
+  /** Задача 10 (замечание 8): скан записи другого года — из папки её года,
+   *  только посмотреть. Место набора откладывается (`visitBase`), листание
+   *  его не трогает, «к набору» и конец правки его возвращают. */
+  const visit = useCallback((name: string, y: number, mode: "edit" | "link") => {
+    const mine = ++visitSeq.current;
+    invoke<ScanFiles>("scan_state", { year: y, section: null, peek: true })
+      .then((s) => {
+        if (mine !== visitSeq.current) return;
+        if (!s.dir) {
+          if (mode === "link") warn(`Папка сканов ${y} года не выбрана`,
+            `у записи — «${sheetLabel(name)}»; папку года выбирают на вкладке с этим годом кнопкой «папка…»`);
+          return;
+        }
+        let shown = s;
+        let i = s.files.indexOf(name);
+        if (i < 0) {
+          const j = s.other.indexOf(name);
+          if (j >= 0) { shown = { ...s, files: s.other, other: s.files, kind: s.kind === "pdf" ? "images" : "pdf" }; i = j; }
+        }
+        if (i < 0) {
+          if (mode === "link") warn("Скана нет в папке", `в папке «${s.dir}» (${y} год) нет «${sheetLabel(name)}»`);
+          return;
+        }
+        if (!visitBase.current) {
+          // Шёл показ записи своего года — место набора то, что он отложил.
+          let base = stateNow.current;
+          let index = atNow.current;
+          if (held.current !== null) {
+            index = held.current;
+            if (heldFlipped.current) base = { ...base, files: base.other, other: base.files, kind: base.kind === "pdf" ? "images" : "pdf" };
+          }
+          visitBase.current = { state: base, index };
+        }
+        // held — место набора: запоминание листа молчит, пока он отложен.
+        held.current = visitBase.current.index;
+        heldFlipped.current = false;
+        peeked.current = null;
+        setState(shown);
+        setIndex(i);
+        setAway(mode);
+        setVisiting(y);
+      })
+      .catch((e) => report("Не удалось прочитать папку сканов года записи", e));
+  }, []);
 
   // Окну скана — всё, что показать, при каждой перемене.
   const sync: ScanSync = { on, year, dir: state.dir, sep: state.sep, files: state.files, missing: state.missing,
@@ -436,13 +507,14 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
     };
     return {
       on, setOn, detached, showIn, year, dir: state.dir, files: state.files, otherCount: state.other.length,
-      missing: state.missing, index: at, file, away,
+      missing: state.missing, index: at, file, away, visiting,
       url: (name) => sheetUrl(state.dir, state.sep, name),
       step: (by) => {
         // Листают после ссылки «скан» — значит, работают уже здесь: место
         // набора теперь тут. При правке записи место набора ждёт её конца.
         const wasAway = away !== null;
-        if (away === "link") settle();
+        // Скан другого года — только посмотреть: место набора не переезжает.
+        if (away === "link" && !visitBase.current) settle();
         const to = Math.min(Math.max(0, count - 1), Math.max(0, at + by));
         go(to);
         // Страница формы идёт за сканом, только если скан и правда сменился
@@ -460,11 +532,17 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           .catch((e) => report("Как вести скан при перелистывании — изменено, но не сохранено", e));
       },
       goTo: (i) => {
-        if (away === "link") settle();
+        if (away === "link" && !visitBase.current) settle();
         go(i);
       },
       show: (name, entryYear) => {
-        if (entryYear !== year) return "другое дело";
+        // Запись другого года — её папка, если выбрана (задача 10).
+        if (entryYear !== year) {
+          if (entryYear === null || year === null) return "другое дело";
+          visit(name, entryYear, away === "edit" ? "edit" : "link");
+          return "ok";
+        }
+        if (visitBase.current && entryYear !== null) { visit(name, entryYear, away === "edit" ? "edit" : "link"); return "ok"; }
         const i = state.files.indexOf(name);
         if (i >= 0) {
           if (i !== at) leave(away ?? "link", i);
@@ -479,9 +557,13 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       },
       pickDir, askDir,
       // У дела ещё нет года (новое дело) — папка его же: первая запись года получает файл.
-      current: (formYear) => (on && (year === null || formYear === year) ? file : null),
+      current: (formYear) => (on && !visitBase.current && (year === null || formYear === year) ? file : null),
       peek: (name, entryYear) => {
-        if (!name || entryYear !== year) return;
+        if (!name) return;
+        if (entryYear !== year || visitBase.current) {
+          if (entryYear !== null) visit(name, entryYear, "edit");
+          return;
+        }
         // Лист записи — запомнить для перечитывания при смене вкладки, только
         // если он показан (найден в папке); иначе прежняя отметка снимается.
         const i = state.files.indexOf(name);
@@ -497,7 +579,18 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       },
       back: () => {
         peeked.current = null;
+        visitSeq.current++;
         setAway(null);
+        const base = visitBase.current;
+        if (base) {
+          visitBase.current = null;
+          held.current = null;
+          heldFlipped.current = false;
+          setVisiting(null);
+          setState(base.state);
+          setIndex(base.index);
+          return;
+        }
         if (held.current === null) return;
         const to = held.current;
         held.current = null;
@@ -520,7 +613,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           .catch((e) => report("Ширина колонки формы не сохранена", e));
       },
     };
-  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply]);
+  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting]);
 
   // Действия человека в окне скана — те же, что кнопками блока.
   const scanRef = useRef(scan);
@@ -760,7 +853,7 @@ export function ScanLink({ file, year }: { file: string | null | undefined; year
               const got = scan.show(file, year);
               if (got === "ok") { if (!scan.on) scan.setOn(true); return; }
               if (got === "другое дело") warn("Скан — в папке другого дела",
-                `запись из дела ${year ?? "без года"} года, а открыта папка дела ${scan.year ?? "без года"} года; у записи — «${sheetLabel(file)}». Откройте дело её года на экране «Дело»`);
+                `запись из дела ${year ?? "без года"} года, а открыта папка ${scan.year ?? "без года"} года; у записи — «${sheetLabel(file)}». Поставьте год записи в форме её раздела`);
               else warn("Скана нет в папке", scan.dir ? `в папке «${scan.dir}» нет «${sheetLabel(file)}»` : `папка сканов этого дела не выбрана; у записи — «${sheetLabel(file)}»`);
             }}>
       скан
@@ -999,6 +1092,10 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
               </button>
             ))}
           </span>
+        )}
+        {scan.visiting !== null && (
+          // Чей это скан: запись другого года, папка её года (задача 10).
+          <span className="scanvisit" data-scan-visiting={scan.visiting}>скан {scan.visiting} года</span>
         )}
         {scan.away === "link" && (
           <button type="button" className="toggle small" data-scan-back {...keep} onClick={scan.back}
@@ -1269,7 +1366,7 @@ export function ScanWindow() {
       kind: sync.kind, bad: sync.bad, setKind: (k) => act({ kind: "sheets", value: k }),
       step: (by) => act({ kind: "step", by }), goTo: (i) => act({ kind: "goto", index: i }),
       show: () => "ok", pickDir: () => act({ kind: "pick" }), askDir: () => undefined, current: () => null,
-      peek: () => undefined, back: () => act({ kind: "back" }), away: sync.away, onTurn: () => () => undefined,
+      peek: () => undefined, back: () => act({ kind: "back" }), away: sync.away, visiting: null, onTurn: () => () => undefined,
       keepPlace: sync.keepPlace, setKeepPlace: (v) => act({ kind: "keep", on: v }),
       formWidth: FORM_WIDTH, setFormWidth: () => undefined,
     };

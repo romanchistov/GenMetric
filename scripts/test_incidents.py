@@ -1356,10 +1356,13 @@ def incident_20261010_skany_ryadom_s_formoj():
     check("запись на правке свой файл скана не теряет, не меняет и чужой не получает без «привязать»",
           "return rebind && open ? open : own;" in entry and "if (!editing) return open;" in entry
           and 'data-scan-bind="none"' in entry)
-    check("новая запись получает разворот только из папки дела своего года; ссылка «скан» — тоже",
-          "current: (formYear) => (on && (year === null || formYear === year) ? file : null)," in scan
-          and 'if (entryYear !== year) return "другое дело";' in scan
-          and "if (!name || entryYear !== year) return;" in scan)
+    # С 24.11.2026 (задача 10) лист записи другого года показывается из папки
+    # ЕЁ года (visit), а не одноимённый файл открытой папки.
+    check("новая запись получает разворот только из папки дела своего года; ссылка «скан» — из папки года записи",
+          "current: (formYear) => (on && !visitBase.current && (year === null || formYear === year) ? file : null)," in scan
+          and "if (entryYear !== year) {" in scan
+          and "if (entryYear !== year || visitBase.current) {" in scan
+          and 'if (entryYear !== null) visit(name, entryYear, "edit");' in scan)
     check("показ разворота по ссылке «скан» не затирает место набора",
           'leave(away ?? "link", i);' in scan and "data-scan-back" in scan)
     forms = [read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")]
@@ -2795,7 +2798,33 @@ def incident_20261124_skan_god_vkladki():
           and "}, [file]);" in scan[i:i + 1500])
 
 
+
+def incident_20261124_skan_zapisi_drugogo_goda():
+    """Роман, замечание 8 (задача 10, сделана 24.11.2026): «Открыть скан» в
+    поиске или досье для записи другого года показывал инструкцию «перейти на
+    „Дело“, сменить год, открыть папку», хотя папка того года сохранена.
+
+    Защита: ссылка «скан» и запись на правке другого года читают папку её
+    года только для просмотра (`scan_state` с `peek`), место набора
+    откладывается (`visitBase`) и возвращается «к набору». Стенд — s92.
+    """
+    scan = strip_comments(read("src/scan.tsx"))
+    i = scan.find("show: (name, entryYear) => {")
+    check("ссылка «скан» записи другого года — папка её года, а не отказ",
+          0 <= i and ('if (entryYear === null || year === null) return "другое дело";' + chr(10)
+                      + '          visit(name, entryYear, away === "edit" ? "edit" : "link");' + chr(10)
+                      + '          return "ok";') in scan[i:i + 600]
+          and 'invoke<ScanFiles>("scan_state", { year: y, section: null, peek: true })' in scan)
+    check("место набора отложено и возвращается «к набору»; новая запись чужой лист не получает",
+          "const base = visitBase.current;" in scan and "on && !visitBase.current &&" in scan)
+    main = strip_comments(read("src-tauri/src/main.rs"))
+    check("просмотр (peek) не забирает папку «без года»",
+          "if dir.is_none() && year.is_some() && peek != Some(true) {" in main)
+    check("совет «Откройте дело её года на экране «Дело»» больше не даётся",
+          "Откройте дело её года" not in scan)
+
 ИНЦИДЕНТЫ = [
+    incident_20261124_skan_zapisi_drugogo_goda,
     incident_20261124_skan_god_vkladki,
     incident_20261124_skan_po_vkladkam,
     incident_20261124_dve_prokrutki_prihody,

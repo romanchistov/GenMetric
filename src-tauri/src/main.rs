@@ -2268,17 +2268,19 @@ fn scan_open_dir(handle: &tauri::AppHandle, log: &Path, dir: &str, open: Vec<Str
     }
 }
 
-/// Папка сканов дела этого года и её файлы. Не в главном потоке окна (как и
+/// Папка сканов дела этого года и её файлы. `peek` — только посмотреть
+/// (скан записи другого года из «Поиска», задача 10): папку «без года» себе не
+/// забирает. Не в главном потоке окна (как и
 /// `scan_set_dir`, `scan_set_kind`): папка с PDF читается целиком при первом
 /// открытии — 55 МБ файла Романа не должны останавливать окно.
 #[tauri::command(async)]
-fn scan_state(handle: tauri::AppHandle, app: State<App>, year: Option<i64>, section: Option<i64>) -> Result<ScanState, String> {
+fn scan_state(handle: tauri::AppHandle, app: State<App>, year: Option<i64>, section: Option<i64>, peek: Option<bool>) -> Result<ScanState, String> {
     let (dir_key, _) = scan_keys(year);
     let (dir, last, kind) = with_conn(&app, "Папка сканов", |conn| {
         let mut dir = parish::setting_get(conn, &dir_key)?.filter(|d| !d.trim().is_empty());
         // Папку выбрали, когда у дела ещё не было года (новое дело): теперь
         // год есть — она переходит к нему, а не теряется (проверяющий 10.10.2026).
-        if dir.is_none() && year.is_some() {
+        if dir.is_none() && year.is_some() && peek != Some(true) {
             let (loose_key, _) = scan_keys(None);
             if let Some(loose) = parish::setting_get(conn, &loose_key)?.filter(|d| !d.trim().is_empty()) {
                 parish::setting_set(conn, &dir_key, &loose)?;
@@ -2302,7 +2304,7 @@ fn scan_set_kind(handle: tauri::AppHandle, app: State<App>, year: Option<i64>, k
         return Err(format!("Вид сканов «{kind}» неизвестен"));
     }
     with_conn(&app, "Вид сканов", |conn| parish::setting_set(conn, &scan_kind_key(year), &kind))?;
-    scan_state(handle, app, year, section)
+    scan_state(handle, app, year, section, None)
 }
 
 /// Запомнить вид листов, не перечитывая папку: вид уже показан окном
@@ -2351,7 +2353,7 @@ fn scan_set_dir(handle: tauri::AppHandle, app: State<App>, year: Option<i64>, pa
         let name = picked.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         if !genmetric_core::scans::is_scan(&name) {
             if dropped == Some(true) {
-                return scan_state(handle, app, year, section);
+                return scan_state(handle, app, year, section, None);
             }
             return Err(fail(format!("«{name}» — не скан: программа показывает файлы .jpg, .jpeg, .png, .tif и .pdf")));
         }

@@ -773,7 +773,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       ["восприемника", god2.iof.trim() ? god2.parsed : null],
       ["восприемника", god3.iof.trim() ? god3.parsed : null],
       ["восприемника", god4.iof.trim() ? god4.parsed : null],
-      ...ks.map((k) => ["родственника восприемника", k.iof.trim() ? k.parsed : null]),
+      ...ks.map((k) => ["родственника", k.iof.trim() ? k.parsed : null]),
       ["причта", clergy1.iof.trim() ? clergy1.parsed : null],
       ["причта", clergy2.iof.trim() ? clergy2.parsed : null],
       ["причта", clergy3.iof.trim() ? clergy3.parsed : null],
@@ -791,7 +791,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     // не писать человека «только званием» молча.
     const lost = ([["отца", father], ["матери", mother], ["восприемника", god1], ["восприемника", god2],
                    ["восприемника", god3], ["восприемника", god4], ["причта", clergy1], ["причта", clergy2],
-                   ["причта", clergy3], ...ks.map((k) => ["родственника восприемника", k])] as [string, Person][]).find(([, p]) => nameLost(p.iof, p.parsed));
+                   ["причта", clergy3], ...ks.map((k) => ["родственника", k])] as [string, Person][]).find(([, p]) => nameLost(p.iof, p.parsed));
     if (lost) {
       warn(`Имя ${lost[0]} «${lost[1].iof.trim()}» не разобрано — запись не сохранена`,
            "чтобы имя не пропало, программа остановилась; нажмите сохранение ещё раз");
@@ -1001,7 +1001,8 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     return [child, father.iof, mother.iof, god1.iof, god2.iof, god3.iof, god4.iof, kin1.iof, kin2.iof]
       .some((v) => v.trim().length > 0)
       || birthDay !== null || riteDay !== null
-      || [father, mother, god1, god2, god3, god4, kin1, kin2].some((p) => p.place.trim() !== "" || p.rank.trim() !== "");
+      || [father, mother, god1, god2, god3, god4, kin1, kin2].some((p) => p.place.trim() !== "" || p.rank.trim() !== "")
+      || [kin1, kin2].some((k) => k.kinOf.trim() !== "" || k.kinship.trim() !== "");
   }
 
   type MentionOut = {

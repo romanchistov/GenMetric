@@ -497,7 +497,8 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
   function formDirty(): boolean {
     // Не только ИОФ: день, НП и звание без имени — тоже набранное (BirthForm).
     return [groom, bride, groomRel, brideRel, ...witnesses, kin1, kin2]
-      .some((p) => p.iof.trim().length > 0 || p.place.trim() !== "" || p.rank.trim() !== "") || day !== null;
+      .some((p) => p.iof.trim().length > 0 || p.place.trim() !== "" || p.rank.trim() !== "") || day !== null
+      || [kin1, kin2].some((k) => k.kinOf.trim() !== "" || k.kinship.trim() !== "");
   }
 
   async function openEntry(id: number) {

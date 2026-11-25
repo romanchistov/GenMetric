@@ -1898,7 +1898,9 @@ SELECT d.id AS entry_id, d.section,
        d.no_male AS c8, d.no_female AS c9, d.event_date AS c10, d.rite_date AS c11,
        ch.iof_doc AS c12,
        f.place AS c13, f.rank AS c14, nullif(f.iof_doc, '') AS c15, f.confession AS c16,
-       nullif(trim(coalesce(f.note_clean, '') || coalesce('; ' || tk.kin, ''), '; '), '') AS c17, NULL AS c18,
+       -- Родственников нет — «Прим.» как было, без обрезки (ревьюер 25.11.2026).
+       CASE WHEN tk.kin IS NULL THEN f.note_clean
+            ELSE nullif(trim(coalesce(f.note_clean, '') || '; ' || tk.kin, '; '), '') END AS c17, NULL AS c18,
        m.place AS c19, m.rank AS c20, nullif(m.iof_doc, '') AS c21, m.confession AS c22, m.note_clean AS c23, NULL AS c24,
        NULL AS c25, NULL AS c26, NULL AS c27, NULL AS c28, NULL AS c29, NULL AS c30,
        nullif(g1.iof_doc, '') AS c31, g1.place AS c32, g1.rank AS c33, g1.note_clean AS c34,
@@ -2095,11 +2097,12 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
        CASE WHEN r2.id IS NOT NULL THEN r2.place_full ELSE bx.place_full END,
        CASE WHEN r2.id IS NOT NULL THEN nullif(trim(coalesce(r2.surname_b || ' ', '') || coalesce(r2.first_m || ' ', '') || coalesce(r2.patr_m, '')), '') ELSE nullif(trim(coalesce(bx.surname_b || ' ', '') || coalesce(bx.first_m || ' ', '') || coalesce(bx.patr_m, '')), '') END,
        k1.rank, k1.fio, NULL, NULL, k2.rank, k2.fio, k3.rank, k3.fio,
-       nullif(trim(coalesce(t.notes, '')
+       CASE WHEN NOT ((r1.id IS NOT NULL AND gx.id IS NOT NULL) OR (r2.id IS NOT NULL AND bx.id IS NOT NULL)) THEN t.notes
+       ELSE nullif(trim(coalesce(t.notes, '')
             || CASE WHEN r1.id IS NOT NULL AND gx.id IS NOT NULL
                     THEN '; родственник жениха' || coalesce(' (' || gx.kinship || ')', '') || ': ' || gx.line ELSE '' END
             || CASE WHEN r2.id IS NOT NULL AND bx.id IS NOT NULL
-                    THEN '; родственник невесты' || coalesce(' (' || bx.kinship || ')', '') || ': ' || bx.line ELSE '' END, '; '), ''),
+                    THEN '; родственник невесты' || coalesce(' (' || bx.kinship || ')', '') || ': ' || bx.line ELSE '' END, '; '), '') END,
        t.author
   FROM x_entry e
   LEFT JOIN x_person g ON g.entry_id = e.id AND g.role_code = 'groom'

@@ -251,6 +251,18 @@ pub fn wives_of(conn: &Connection, husbands: &[&str], place: Option<&str>) -> Re
         asked.push(key);
     }
     drop(stmt);
+    // НП мужа неизвестен, а жёны из разных пунктов — никого, как у
+    // spouse_lookup; блок судит по одному написанию, здесь — по всем
+    // (ревьюер 25.11.2026, второй круг).
+    if place.is_none() {
+        let mut places: Vec<&str> = rows.iter().filter_map(|(_, w)| w.place.as_deref()).map(str::trim)
+            .filter(|p| !p.is_empty()).collect();
+        places.sort_unstable();
+        places.dedup();
+        if places.len() > 1 {
+            return Ok(Vec::new());
+        }
+    }
     rows.sort_by(|(a, _), (b, _)| b.cmp(a));
     let rows = rows.into_iter().map(|(_, w)| w);
     // Ключ — (имя и отчество, фамилия) в современном написании.
@@ -1614,6 +1626,12 @@ mod tests {
 
         // НП мужа неизвестен, жёны из разных пунктов — никого (как spouse_lookup).
         assert!(wives_of(&conn, &["Иван Петров Пробов"], None).unwrap().is_empty());
+        // То же, когда пункты разные у разных написаний мужа.
+        add("Илья Петров Сводов", "Анна Петрова Сводова", Some("Тестово"), "2026-01-01");
+        add("Илья Петрович Сводов", "Ольга Петрова Сводова", Some("Другое"), "2026-01-02");
+        assert!(wives_of(&conn, &["Илья Петров Сводов"], None).unwrap().len() <= 1);
+        assert!(wives_of(&conn, &["Илья Петров Сводов", "Илья Петрович Сводов"], None).unwrap().is_empty(),
+                "жёны из разных пунктов у разных написаний — никого");
         drop(conn);
         let _ = std::fs::remove_file(&path);
     }

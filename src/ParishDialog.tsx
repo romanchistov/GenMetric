@@ -197,7 +197,7 @@ export default function ParishDialog({ onClose }: { onClose: () => void }) {
     // п. 4), а не ко второй строке перечня.
     window.setTimeout(() => {
       const box = document.querySelector<HTMLElement>('.modal[data-modal="parish"]');
-      (box?.querySelector<HTMLElement>('input[name="parish-pick"]:checked')
+      (box?.querySelector<HTMLElement>('input[name="parish-pick"]:checked:not(:disabled)')
         ?? box?.querySelector<HTMLElement>("input:not([type=file]), button"))?.focus();
     }, 0);
   }

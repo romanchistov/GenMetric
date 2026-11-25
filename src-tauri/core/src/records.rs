@@ -225,16 +225,34 @@ pub const WIVES_SHOWN: usize = 3;
 /// разных написаниях — одна: те же имя и отчество в современном написании,
 /// фамилия та же или у одной из них пустая. Из написаний берётся первое по
 /// порядку (последнее набранное) с фамилией, иначе первое. Не больше
-/// `WIVES_SHOWN`.
-pub fn wives_of(conn: &Connection, husband: &str, place: Option<&str>) -> Result<Vec<Wife>, String> {
+/// `WIVES_SHOWN`. `husbands` — все написания мужа, свёрнутые в одну строку
+/// подсказки («…Александров» и «…Александрович», с «ъ» и без): у каждого в
+/// памяти пар свой ключ (ревьюер 25.11.2026).
+pub fn wives_of(conn: &Connection, husbands: &[&str], place: Option<&str>) -> Result<Vec<Wife>, String> {
     let place = place.map(str::trim).filter(|p| !p.is_empty());
-    let mut stmt = conn.prepare(&statement("spouse_wives")?).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::named_params! { ":husband_norm": normalize(husband), ":place": place },
-                              |r| Ok(Wife { iof: r.get(0)?, place: r.get(1)?, rank: r.get(2)?, name_surname: false }))
+    let sql = statement("spouse_wives")?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    // (свой пункт, когда, частота, номер) — порядок spouse_lookup.
+    let mut rows: Vec<((bool, String, i64, i64), Wife)> = Vec::new();
+    let mut asked: Vec<String> = Vec::new();
+    for husband in husbands {
+        let key = normalize(husband);
+        if asked.contains(&key) {
+            continue;
+        }
+        let found = stmt.query_map(rusqlite::named_params! { ":husband_norm": key, ":place": place }, |r| {
+            Ok(((r.get(4)?, r.get(5)?, r.get(3)?, r.get(6)?),
+                Wife { iof: r.get(0)?, place: r.get(1)?, rank: r.get(2)?, name_surname: false }))
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+        rows.extend(found);
+        asked.push(key);
+    }
     drop(stmt);
+    rows.sort_by(|(a, _), (b, _)| b.cmp(a));
+    let rows = rows.into_iter().map(|(_, w)| w);
     // Ключ — (имя и отчество, фамилия) в современном написании.
     let mut groups: Vec<((String, String), Wife)> = Vec::new();
     for wife in rows {
@@ -1571,24 +1589,31 @@ mod tests {
         add("Иван Петров Пробов", "Ольга Ильина Пробова", Some("Другое"), "2026-01-03");
         // Первая — она же без фамилии и в старом написании имени.
         add("Иван Петров Пробов", "Анна Сидорова", Some("Тестово"), "2026-01-04");
-        assert_eq!(names(wives_of(&conn, "Иван Петров Пробов", Some("Тестово")).unwrap()),
+        assert_eq!(names(wives_of(&conn, &["Иван Петров Пробов"], Some("Тестово")).unwrap()),
                    ["Анна Сидорова Пробова", "Евдокия Иванова Пробова"],
                    "написание без фамилии — та же жена, берётся с фамилией");
 
         // «Марья» и «Мария» — одно имя.
         add("Петр Иванов Опытов", "Марья Ильина Опытова", Some("Тестово"), "2026-01-01");
         add("Петр Иванов Опытов", "Мария Ильина Опытова", Some("Тестово"), "2026-01-02");
-        let one = wives_of(&conn, "Петр Иванов Опытов", Some("Тестово")).unwrap();
+        let one = wives_of(&conn, &["Петр Иванов Опытов"], Some("Тестово")).unwrap();
         assert_eq!(one.len(), 1, "старое и новое написание имени — одна жена: {one:?}");
 
         // Больше трёх — три.
         for (i, w) in ["Анна", "Евдокия", "Ольга", "Татьяна"].iter().enumerate() {
             add("Семен Ильин Многов", &format!("{w} Петрова Многова"), Some("Тестово"), &format!("2026-01-0{}", i + 1));
         }
-        assert_eq!(wives_of(&conn, "Семен Ильин Многов", Some("Тестово")).unwrap().len(), WIVES_SHOWN);
+        assert_eq!(wives_of(&conn, &["Семен Ильин Многов"], Some("Тестово")).unwrap().len(), WIVES_SHOWN);
+
+        // Муж в другом написании отчества — свой ключ в памяти пар; строка
+        // подсказки одна, жёны — обоих написаний (ревьюер 25.11.2026).
+        add("Иван Петрович Пробов", "Татьяна Ильина Пробова", Some("Тестово"), "2026-01-05");
+        assert_eq!(names(wives_of(&conn, &["Иван Петров Пробов", "Иван Петрович Пробов"], Some("Тестово")).unwrap()),
+                   ["Татьяна Ильина Пробова", "Анна Сидорова Пробова", "Евдокия Иванова Пробова"],
+                   "жёны всех написаний мужа, последняя набранная — первой");
 
         // НП мужа неизвестен, жёны из разных пунктов — никого (как spouse_lookup).
-        assert!(wives_of(&conn, "Иван Петров Пробов", None).unwrap().is_empty());
+        assert!(wives_of(&conn, &["Иван Петров Пробов"], None).unwrap().is_empty());
         drop(conn);
         let _ = std::fs::remove_file(&path);
     }

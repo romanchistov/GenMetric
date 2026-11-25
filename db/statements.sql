@@ -1491,8 +1491,12 @@ SELECT wife_iof, wife_place, wife_rank, uses
 -- «полные тезки с разными женами… необходимо дополнительно выводить имя его
 -- жены»). Отбор и порядок — как у spouse_lookup, без LIMIT: первая строка —
 -- та, что подставила бы spouse_lookup. Одну жену в разных написаниях
--- сворачивает records::wives_of.
-SELECT wife_iof, wife_place, wife_rank, uses
+-- сворачивает records::wives_of; он же сводит жён нескольких написаний
+-- мужа — по колонкам порядка (same_place, last_used_at, uses, id). LIMIT —
+-- предел работы на нажатие (ревьюер 25.11.2026: муж без фамилии в большом
+-- селе — десятки жён разных людей).
+SELECT wife_iof, wife_place, wife_rank, uses,
+       coalesce(wife_place, '') = coalesce(:place, '') AS same_place, coalesce(last_used_at, '') AS at, id
   FROM spouse_index
  WHERE husband_norm = :husband_norm
    AND (CASE WHEN :place IS NULL
@@ -1500,7 +1504,8 @@ SELECT wife_iof, wife_place, wife_rank, uses
                     WHERE x.husband_norm = :husband_norm) <= 1
              ELSE coalesce(wife_place, '') IN ('', :place) END)
  ORDER BY (coalesce(wife_place, '') = coalesce(:place, '')) DESC,
-          last_used_at DESC, uses DESC, id DESC;
+          last_used_at DESC, uses DESC, id DESC
+ LIMIT 30;
 
 -- @spouse_husbands_like
 -- Мужья в памяти пар по образцу (records::spouse_husband_alias): той же

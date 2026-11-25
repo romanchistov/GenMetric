@@ -1002,11 +1002,13 @@ fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, lim
         // 20.10.2026: «две абсолютно одинаковые персоны»).
         let mut seen: Vec<(String, Option<String>)> = Vec::new();
         let mut kept: Vec<PersonHint> = Vec::new();
+        // Написания, свёрнутые в строку, — жёны ищутся по всем (задача 5).
+        let mut spellings: Vec<Vec<String>> = Vec::new();
         for hint in out {
             let key = (genmetric_core::records::person_key(conn, &hint.iof, hint.name_surname)?, hint.place.clone());
             match seen.iter().position(|k| *k == key) {
-                Some(n) => kept[n].uses += hint.uses,
-                None => { seen.push(key); kept.push(hint); }
+                Some(n) => { kept[n].uses += hint.uses; spellings[n].push(hint.iof); }
+                None => { seen.push(key); spellings.push(vec![hint.iof.clone()]); kept.push(hint); }
             }
         }
         kept.truncate(limit as usize);
@@ -1015,8 +1017,9 @@ fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, lim
         // какого именно тезку он выбирает»). Одна жена — строка как была.
         if wives.unwrap_or(false) {
             let mut split = Vec::with_capacity(kept.len());
-            for hint in kept {
-                let found = genmetric_core::records::wives_of(conn, &hint.iof, hint.place.as_deref())?;
+            for (hint, names) in kept.into_iter().zip(spellings) {
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                let found = genmetric_core::records::wives_of(conn, &names, hint.place.as_deref())?;
                 if found.len() < 2 {
                     split.push(hint);
                     continue;

@@ -192,9 +192,13 @@ export default function ParishDialog({ onClose }: { onClose: () => void }) {
     }
     // Форма, очищаясь, ставит курсор в своё первое поле — под окном.
     // Вернуть его в окно, чтобы Esc и Tab работали здесь: в поле названия
-    // нового прихода или на первую кнопку перечня.
+    // нового прихода, а в перечне — на отмеченную строку, как при открытии
+    // окна: ↓ тогда идёт к следующей за ней (ревьюер 19.11.2026, Бэклог р. 3
+    // п. 4), а не ко второй строке перечня.
     window.setTimeout(() => {
-      document.querySelector<HTMLElement>('.modal[data-modal="parish"] input:not([type=file]), .modal[data-modal="parish"] button')?.focus();
+      const box = document.querySelector<HTMLElement>('.modal[data-modal="parish"]');
+      (box?.querySelector<HTMLElement>('input[name="parish-pick"]:checked')
+        ?? box?.querySelector<HTMLElement>("input:not([type=file]), button"))?.focus();
     }, 0);
   }
 

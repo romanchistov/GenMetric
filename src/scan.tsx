@@ -343,18 +343,28 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
     if (!s.missing && s.files.length === 0) warn("В папке нет сканов", "программа показывает файлы .jpg, .jpeg, .png, .tif и .pdf; вложенные папки не читаются");
   }, [apply, setOn]);
 
+  /** Показано место года и раздела, для которых его спросили: выбор папки
+   *  или вида листов мог отменить чтение места новой вкладки, и лист новой
+   *  папки иначе запоминался бы под прежние год и раздел (ревьюер 24.11.2026,
+   *  Бэклог р. 3 п. 19). */
+  const loadedFor = useCallback((year: number | null, section: number | null) => {
+    loadedYear.current = year;
+    loadedSection.current = section;
+  }, []);
+
   const pickDir = useCallback(() => {
     const mine = ++loadSeq.current;
+    const year = yearRef.current, section = sectionRef.current;
     // Системное окно роботу стенда и сквозной проверки недоступно — им путь
     // даёт подмена `window.__pickScanDir`; дальше всё настоящее.
     const hook = (window as unknown as { __pickScanDir?: () => string | null }).__pickScanDir;
     const asked = hook
-      ? Promise.resolve(hook()).then((path) => (path ? invoke<ScanFiles>("scan_set_dir", { year: yearRef.current, path, section: sectionRef.current }) : null))
-      : invoke<ScanFiles | null>("scan_pick_dir", { year: yearRef.current, section: sectionRef.current });
+      ? Promise.resolve(hook()).then((path) => (path ? invoke<ScanFiles>("scan_set_dir", { year, path, section }) : null))
+      : invoke<ScanFiles | null>("scan_pick_dir", { year, section });
     asked
-      .then((s) => { if (s && mine === loadSeq.current) chosen(s); })
+      .then((s) => { if (s && mine === loadSeq.current) { loadedFor(year, section); chosen(s); } })
       .catch((e) => report("Не удалось открыть папку сканов", e));
-  }, [chosen]);
+  }, [chosen, loadedFor]);
 
   pickRef.current = pickDir;
   /** Новый год на форме (Роман 19.10.2026): «программа должна автоматически
@@ -376,17 +386,21 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
   // Чужой файл (не скан) Rust не принимает: на окно бросают и другое.
   const chosenRef = useRef(chosen);
   chosenRef.current = chosen;
+  const loadedForRef = useRef(loadedFor);
+  loadedForRef.current = loadedFor;
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let off: (() => void) | undefined;
     let gone = false;
     const dropped = (path: string) => {
       const mine = ++loadSeq.current;
-      invoke<ScanFiles>("scan_set_dir", { year: yearRef.current, path, dropped: true, section: sectionRef.current })
+      const year = yearRef.current, section = sectionRef.current;
+      invoke<ScanFiles>("scan_set_dir", { year, path, dropped: true, section })
         .then((s) => {
           if (mine !== loadSeq.current) return;
           // Ничего не изменилось и открывать нечего — бросили не скан.
           if (s.dir === dirRef.current && !s.open && s.dir !== path) return;
+          loadedForRef.current(year, section);
           chosenRef.current(s);
         })
         .catch((e) => report("Не удалось открыть перетащенную папку сканов", e));
@@ -657,8 +671,9 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       bad: state.bad,
       setKind: (kind) => {
         const mine = ++loadSeq.current;
-        invoke<ScanFiles>("scan_set_kind", { year, kind, section: sectionRef.current })
-          .then((s) => { if (mine === loadSeq.current) apply(s); })
+        const section = sectionRef.current;
+        invoke<ScanFiles>("scan_set_kind", { year, kind, section })
+          .then((s) => { if (mine === loadSeq.current) { loadedFor(year, section); apply(s); } })
           .catch((e) => report("Не удалось переключить вид сканов", e));
       },
       formWidth,
@@ -669,7 +684,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           .catch((e) => report("Ширина колонки формы не сохранена", e));
       },
     };
-  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting, endVisit, fromBase, baseTick]);
+  }, [on, setOn, detached, showIn, year, state, at, file, count, pickDir, askDir, formWidth, away, keepPlace, apply, visit, visiting, endVisit, fromBase, baseTick, loadedFor]);
 
   // Действия человека в окне скана — те же, что кнопками блока.
   const scanRef = useRef(scan);

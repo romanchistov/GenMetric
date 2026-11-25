@@ -777,9 +777,6 @@ struct OpenedYear {
     case: Option<Case>,
     /// Год без записей: формы начинают его с чистого листа.
     fresh: bool,
-    /// Дело завела эта команда (а не человек на экране «Дело»): только такое
-    /// пустое дело можно убрать при возврате (ревьюер 19.10.2026).
-    created: bool,
     /// Год без записей не заведён: в прежнем году нет записей — похоже на
     /// опечатку; окно говорит об этом полосой (Роман 20.10.2026).
     typo: bool,
@@ -818,17 +815,17 @@ fn case_open_year(app: State<App>, year: i64) -> Result<OpenedYear, String> {
         // 19.10.2026: страница, набранная до года, пропадала). Год получит
         // дело при первой записи, как раньше.
         if last.is_none() {
-            return Ok(OpenedYear { case: None, fresh, created: false, typo: false, sections });
+            return Ok(OpenedYear { case: None, fresh, typo: false, sections });
         }
         let before = count("SELECT count(*) FROM entry e JOIN mk_case c ON c.id = e.case_id WHERE c.year = ?1 - 1")?;
         if fresh && !has_case && before == 0 {
-            return Ok(OpenedYear { case: None, fresh, created: false, typo: true, sections });
+            return Ok(OpenedYear { case: None, fresh, typo: true, sections });
         }
         // Задача 16: смена года дело не заводит — оно появится при первой
         // записи года (год + текущие реквизиты). Окну — текущие реквизиты с
         // этим годом.
         let reqs = genmetric_core::records::current_reqs(conn)?;
-        Ok(OpenedYear { case: Some(Case { year: Some(year), ..reqs }), fresh, created: false, typo: false, sections })
+        Ok(OpenedYear { case: Some(Case { year: Some(year), ..reqs }), fresh, typo: false, sections })
     })
 }
 

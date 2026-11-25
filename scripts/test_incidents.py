@@ -2520,7 +2520,7 @@ def incident_20261019_oshibki_svyazej():
     # возврате нечего, и дело, заведённое человеком, не тронется.
     check("смена года дела не заводит и при возврате ничего не убирает (ревьюер 19.10.2026, задача 16)",
           'invoke<boolean>("case_delete"' not in read("src/App.tsx")
-          and "fresh, created: false, typo: false, sections })" in read("src-tauri/src/main.rs")
+          and "fresh, typo: false, sections })" in read("src-tauri/src/main.rs")
           and "case_for_year(conn, year)" not in strip_comments(read("src-tauri/src/main.rs")))
     check("после перезапуска — пустой новый год, заведённый позже последней записи (долг п. 67)",
           "AND c.created_at > coalesce((SELECT max(e.created_at) FROM entry e), '')" in blocks["case_current"])
@@ -2828,7 +2828,7 @@ def incident_20261124_skan_zapisi_drugogo_goda():
           and "return base.state.missing ? null : base.state.files[Math.min(base.index," in scan
           # Ревьюер 24.11.2026: смена вкладки во время показа обновляет место —
           # форма перечитывает его (иначе запись получала лист прежней вкладки).
-          and "setBaseTick((n) => n + 1);" in scan and "fromBase, baseTick]);" in scan)
+          and "setBaseTick((n) => n + 1);" in scan and "fromBase, baseTick, loadedFor]);" in scan)
     main = strip_comments(read("src-tauri/src/main.rs"))
     check("просмотр (peek) не забирает папку «без года»",
           "if dir.is_none() && year.is_some() && peek != Some(true) {" in main)

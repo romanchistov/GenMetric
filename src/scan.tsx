@@ -75,7 +75,7 @@ type Scan = {
    * к нему возвращает кнопка «к набору». Год — год книги записи: папка у
    * каждого дела своя, и одноимённый файл чужого дела показывать нельзя.
    */
-  show: (name: string, year: number | null) => "ok" | "нет файла" | "другое дело";
+  show: (name: string, year: number | null) => "ok" | "нет файла" | "другое дело" | "сказано";
   /** Системное окно выбора папки. */
   pickDir: () => void;
   /** Новый год: открыть выбор папки, если у этого года её нет. */
@@ -591,7 +591,14 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
           visit(name, entryYear, away === "edit" ? "edit" : "link");
           return "ok";
         }
-        if (visitBase.current) return fromBase(name, away === "edit" ? "edit" : "link") ? "ok" : "нет файла";
+        if (visitBase.current) {
+          // Папка — вкладки, а не показанного чужого года: ScanLink видит
+          // состояние прошлой перерисовки (ревьюер 24.11.2026, Бэклог р. 3 п. 20).
+          const dir = visitBase.current.state.dir;
+          if (fromBase(name, away === "edit" ? "edit" : "link")) return "ok";
+          warn("Скана нет в папке", dir ? `в папке «${dir}» нет «${sheetLabel(name)}»` : `папка сканов этого дела не выбрана; у записи — «${sheetLabel(name)}»`);
+          return "сказано";
+        }
         const i = state.files.indexOf(name);
         if (i >= 0) {
           if (i !== at) leave(away ?? "link", i);
@@ -905,6 +912,7 @@ export function ScanLink({ file, year }: { file: string | null | undefined; year
             onClick={() => {
               const got = scan.show(file, year);
               if (got === "ok") { if (!scan.on) scan.setOn(true); return; }
+              if (got === "сказано") return;
               if (got === "другое дело") warn("Скан — в папке другого дела",
                 `запись из дела ${year ?? "без года"} года, а открыта папка ${scan.year ?? "без года"} года; у записи — «${sheetLabel(file)}». Поставьте год записи в форме её раздела`);
               else warn("Скана нет в папке", scan.dir ? `в папке «${scan.dir}» нет «${sheetLabel(file)}»` : `папка сканов этого дела не выбрана; у записи — «${sheetLabel(file)}»`);

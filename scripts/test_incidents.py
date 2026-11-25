@@ -1364,7 +1364,9 @@ def incident_20261010_skany_ryadom_s_formoj():
           and "if (entryYear !== year) {" in scan
           and 'if (entryYear !== null) visit(name, entryYear, "edit");' in scan
           # Свой год во время показа чужого — из отложенной папки вкладки.
-          and 'if (visitBase.current) return fromBase(name, away === "edit" ? "edit" : "link") ? "ok" : "нет файла";' in scan
+          and 'if (fromBase(name, away === "edit" ? "edit" : "link")) return "ok";' in scan
+          # «нет файла» — папкой вкладки, не показанного года (п. 20).
+          and "const dir = visitBase.current.state.dir;" in scan and 'if (got === "сказано") return;' in scan
           and 'if (visitBase.current) { fromBase(name, "edit"); return; }' in scan)
     check("показ разворота по ссылке «скан» не затирает место набора",
           'leave(away ?? "link", i);' in scan and "data-scan-back" in scan)
@@ -1707,7 +1709,7 @@ def incident_20261020_otvet_na_sborku_19_10():
     check("окно уже на новом году, форма на прежнем — формы всё равно встают на него",
           "if (mkCase?.year === year) return false;" not in app)
     check("год с записями только в другом разделе (следующий год формы) и возврат «−» — все формы идут за ним",
-          "const back = lastMove.current?.to === from && lastMove.current?.from === year;" in app
+          "const back = move?.to === from && move?.from === year;" in app and "const move = lastMove.current[section];" in app
           and "!(from !== null && year === from + 1)" in app
           and all("workYear.freshSections?.includes(" in read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm"))
           and "sections: [i64; 3]," in read("src-tauri/src/main.rs"))
@@ -2511,7 +2513,7 @@ def incident_20261019_oshibki_svyazej():
           and 'invoke<ScanFiles>("scan_state", { year, section })' in scan)
     check("блок скана изначально включён, выключенный руками — нет", 'if (v !== "0") setOnState(true);' in scan)
     check("новый год на любой форме — дело года, все формы с чистого листа, окно папки; дальний пустой год (опечатка) — нет",
-          'invoke<{ case: Case | null; fresh: boolean; created: boolean; typo: boolean; sections: number[] }>("case_open_year", { year })' in read("src/App.tsx")
+          'invoke<{ case: Case | null; fresh: boolean; typo: boolean; sections: number[] }>("case_open_year", { year })' in read("src/App.tsx")
           and "if fresh && !has_case && before == 0 {" in read("src-tauri/src/main.rs") and "if last.is_none() {" in read("src-tauri/src/main.rs") and "scanCtx.askDir" in read("src/MarriageForm.tsx")
           and "fn case_open_year(" in read("src-tauri/src/main.rs"))
     # С 23.11.2026 (задача 16) смена года дело не заводит вовсе — убирать при
@@ -2857,7 +2859,7 @@ def incident_20261124_god_odnoj_formy():
     for form, n in (("BirthForm", 1), ("MarriageForm", 2), ("DeathForm", 3)):
         src = strip_comments(read(f"src/{form}.tsx"))
         check(f"{form}: год, сменённый в другой форме, её не трогает",
-              f"if (workYear.section !== undefined && workYear.section !== {n}) return;" in src)
+              f"if (workYear.section !== {n}) return;" in src)
 
 ИНЦИДЕНТЫ = [
     incident_20261124_god_odnoj_formy,

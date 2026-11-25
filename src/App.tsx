@@ -70,25 +70,22 @@ export default function App() {
   // «Сохранить дело» с годом — формы встают на него (спека 2026-10-03, п. 1.2);
   // «Открыть запись» из списка на сверку — запись в форме своего раздела.
   // n — счётчик: то же значение второй раз тоже должно сработать.
-  const [workYear, setWorkYear] = useState<{ year: number; n: number; fresh?: boolean; freshSections?: number[]; section?: 1 | 2 | 3 } | null>(null);
+  const [workYear, setWorkYear] = useState<{ year: number; n: number; fresh?: boolean; freshSections?: number[]; section: 1 | 2 | 3 } | null>(null);
   const [openReq, setOpenReq] = useState<{ section: number; id: number; n: number } | null>(null);
   function openEntry(section: number, id: number) {
     setScreen(section === 1 ? "births" : section === 2 ? "marriages" : "deaths");
     setOpenReq((prev) => ({ section, id, n: (prev?.n ?? 0) + 1 }));
   }
-  /** Новый год, заведённый сменой года на форме и ещё без записей: вернулись
-   *  с него на год с записями (опечатка) — его пустое дело убирается. */
-  const openedEmpty = useRef<number | null>(null);
   /** Год сменили на форме (спека 2026-10-19-oshibki-svyazej-i-dovodka, Ж2.7):
    *  новый год — его дело, форма встаёт на него с чистого листа; возврат с
    *  только что заведённого года на год с записями — форма возвращается.
    *  С 24.11.2026 — только форма, где сменили год (`section`), остальные
    *  стоят, где были. Ответ — новый ли это год. */
-  /** Последний переход на новый год без записей: откуда и куда. Вернулись
-   *  «−» с него на прежний год — форма возвращается со страницы последней
-   *  записи года (проверяющий 20.10.2026). Общий на все формы: худшее — лишнее
-   *  перечитывание страницы (ревьюер 24.11.2026). */
-  const lastMove = useRef<{ from: number; to: number } | null>(null);
+  /** Последний переход формы на новый год без записей: откуда и куда.
+   *  Вернулись «−» с него на прежний год — форма возвращается со страницы
+   *  последней записи года (проверяющий 20.10.2026). У каждой формы свой
+   *  (с 25.11.2026, Бэклог р. 3 п. 22). */
+  const lastMove = useRef<Record<number, { from: number; to: number } | null>>({});
   /** Роман 24.11.2026 (Бэклог р. 3 п. 15): «Нажатие + или -, изменение года в
    *  любом разделе не должно влиять на остальные разделы, в остальных разделах
    *  все должно остаться на том месте, где закончил пользователь». Поэтому
@@ -96,7 +93,7 @@ export default function App() {
    *  правило «все формы встают на новый год» (19.10.2026) снято. */
   async function newYear(year: number, from: number | null, section: 1 | 2 | 3): Promise<boolean> {
     try {
-      const r = await invoke<{ case: Case | null; fresh: boolean; created: boolean; typo: boolean; sections: number[] }>("case_open_year", { year });
+      const r = await invoke<{ case: Case | null; fresh: boolean; typo: boolean; sections: number[] }>("case_open_year", { year });
       if (!r.case) {
         // Год без записей, но не следующий за набранным, — похоже на опечатку:
         // дело не заводится, формы не трогаются. Молча — нельзя: у Романа
@@ -105,23 +102,19 @@ export default function App() {
           `в ${year - 1} году нет ни одной записи — похоже на опечатку. Если год верный, просто набирайте: дело года появится с первой записью.`);
         return false;
       }
-      const left = openedEmpty.current;
-      const back = lastMove.current?.to === from && lastMove.current?.from === year;
+      const move = lastMove.current[section];
+      const back = move?.to === from && move?.from === year;
       // Год с записями: формы идут за ним, только если это возврат с только
       // что начатого года или следующий год формы (в другом разделе он уже
       // начат — рождения 1902 набраны, смерти 1902 начинаются). Иначе — как
       // раньше: форма просто стоит на этом году.
-      if (!r.fresh && left === null && !back && !(from !== null && year === from + 1)) return false;
-      if (!r.fresh && left === year) return false;
+      if (!r.fresh && !back && !(from !== null && year === from + 1)) return false;
       // Окно уже на этом годе (пустое дело, заведённое до перезапуска), а
       // форма — на прежнем: форма всё равно встаёт на него (Роман 20.10.2026).
       setMkCase(r.case);
       const freshSections = [1, 2, 3].filter((k) => (r.sections?.[k - 1] ?? 0) === 0);
       setWorkYear((prev) => ({ year, fresh: r.fresh, freshSections, section, n: (prev?.n ?? 0) + 1 }));
-      lastMove.current = r.fresh && from !== null ? { from, to: year } : null;
-      // Убрать при возврате можно только дело, которое завела сама смена года:
-      // заведённое человеком на экране «Дело» (с реквизитами) — нет.
-      openedEmpty.current = r.created ? year : null;
+      lastMove.current[section] = r.fresh && from !== null ? { from, to: year } : null;
       // Окно выбора папки — только году совсем без записей: у начатого года
       // папка уже выбрана, а возврат не повод её спрашивать.
       return r.fresh;
@@ -131,8 +124,6 @@ export default function App() {
     }
   }
   function entrySaved(caseId: number) {
-    // Первая запись нового года — его дело больше не «пустое заведённое».
-    openedEmpty.current = null;
     // Дело без года с первой записью получает её год — экран «Дело» должен
     // это узнать, иначе сохранит прежний пустой год (ревьюер 02.10.2026).
     // Список «Дела прихода» (число записей) — перечитать (задача 16).

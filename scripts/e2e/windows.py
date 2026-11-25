@@ -673,7 +673,7 @@ def run(driver, wait, archive):
         # 19.10.2026: год с записями — не «новый год» (команда через настоящий Rust).
         old = fam.get("oldYear") or {}
         check("год с записями (1897): case_open_year отдаёт его дело без чистого листа и ничего не заводит",
-              (old.get("case") or {}).get("year") == 1897 and old.get("fresh") is False and old.get("created") is False, str(old)[:300])
+              (old.get("case") or {}).get("year") == 1897 and old.get("fresh") is False and "created" not in old, str(old)[:300])
         check("case_open_year отдаёт записи года по разделам (рождения есть)",
               isinstance(old.get("sections"), list) and len(old["sections"]) == 3 and old["sections"][0] > 0, str(old.get("sections")))
         check("список смертей с полом и отцом умершего читается настоящим Rust",

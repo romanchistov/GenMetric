@@ -908,14 +908,26 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
                         }
                         // Родственник восприемника или родителя — свои блоки
                         // формы «№ *» и «№ **» (задача 7, 25.11.2026): «чей»,
-                        // родство, звание, Н.П., ФИО. Без ФИО — звание и место
-                        // уходят в примечание, как у других ролей (`person`).
+                        // родство, звание, Н.П., ФИО. Без ФИО человека в форме
+                        // нет — набранное в строке уходит в примечание записи,
+                        // как до 25.11.2026 (проверяющий: иначе «чей» и
+                        // родство пропадали молча).
                         for k in 0..2u32 {
                             let c = 48 + 6 * k;
                             let role = ["kin_godparent1", "kin_godparent2"][k as usize];
                             let names = match g(c + 5) {
                                 Some(fio) => fam.split_fio(&fio, false)?,
-                                None => Names::default(),
+                                None => {
+                                    let parts: Vec<String> = [g(c + 2), g(c + 3).map(|p| format!("({p})"))]
+                                        .into_iter().flatten().collect();
+                                    let whose = [g(c), g(c + 1)].into_iter().flatten().collect::<Vec<_>>().join(", ");
+                                    if !parts.is_empty() || !whose.is_empty() {
+                                        notes.push(format!("родственник{}: {}",
+                                            if whose.is_empty() { String::new() } else { format!(" ({whose})") },
+                                            if parts.is_empty() { "без имени".to_string() } else { parts.join(" ") }));
+                                    }
+                                    continue;
+                                }
                             };
                             let kinship = g(c + 1);
                             let gender = kinship.as_deref().and_then(kin_gender);
@@ -1654,7 +1666,9 @@ mod tests {
     fn kin_of_godparents_and_witnesses() {
         let Some(seed) = seed() else { return };
         let mut b = birth("1890", "Нил", "Иван", "Кузнецов");
-        b.1.extend([(48, "восприемника №2"), (49, "муж"), (50, "крестьянин"), (51, "Заречье"), (53, "Сомов Пётр Ильич")]);
+        b.1.extend([(48, "восприемника №2"), (49, "муж"), (50, "крестьянин"), (51, "Заречье"), (53, "Сомов Пётр Ильич"),
+                    // № ** без ФИО — человека нет, строка уходит в примечание.
+                    (54, "восприемника №1"), (55, "отец")]);
         let m = ("БРАК", vec![
             (1, "1"), (2, "ГА"), (3, "56"), (5, "7"), (7, "Тестово"), (9, "Никольская"), (11, "1"),
             (12, "5"), (13, "1"), (14, "1890"), (18, "Кузнецов"), (20, "Иван"), (21, "Петрович"),
@@ -1673,7 +1687,9 @@ mod tests {
         // «невесты» и роль невесты свободна — как до 25.11.2026, в её блок.
         assert_eq!(who("bride_relative"), "-|дядя|-|Лука Сидоров|М");
         let note: String = conn.query_row("SELECT coalesce(group_concat(note, ' '), '') FROM entry", [], |r| r.get(0)).unwrap();
-        assert!(!note.contains("родственник"), "в примечание родственник не уходит: {note}");
+        assert!(!note.contains("Сомов") && !note.contains("Ефимов"), "в примечание родственник с ФИО не уходит: {note}");
+        assert!(note.contains("родственник (восприемника №1, отец): без имени"), "без ФИО — в примечание: {note}");
+        assert_eq!(who("kin_godparent2"), "нет");
 
         let (out, _) = crate::export::familio_bytes(&conn, &[], &about()).unwrap();
         let birth = read_sheet(&out, "РОЖДЕНИЕ").unwrap();

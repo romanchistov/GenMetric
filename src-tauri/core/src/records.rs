@@ -207,6 +207,62 @@ pub fn spouse_husband_alias(conn: &Connection, husband: &str) -> Result<Option<S
     Ok(None)
 }
 
+/// Жена из памяти пар — для строки подсказки отца и для подстановки в мать.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Wife {
+    pub iof: String,
+    pub place: Option<String>,
+    pub rank: Option<String>,
+    /// Отметка «ИФ» из памяти персон (`person_name_surname`).
+    pub name_surname: bool,
+}
+
+/// Сколько жён одного мужа показывать строками подсказки (Роман 25.11.2026).
+pub const WIVES_SHOWN: usize = 3;
+
+/// Разные жёны мужа (задача 5, спека 2026-11-25-zhena-v-podskazke-otca):
+/// отбор и порядок — как у `spouse_lookup` (блок `spouse_wives`), одна жена в
+/// разных написаниях — одна: те же имя и отчество в современном написании,
+/// фамилия та же или у одной из них пустая. Из написаний берётся первое по
+/// порядку (последнее набранное) с фамилией, иначе первое. Не больше
+/// `WIVES_SHOWN`.
+pub fn wives_of(conn: &Connection, husband: &str, place: Option<&str>) -> Result<Vec<Wife>, String> {
+    let place = place.map(str::trim).filter(|p| !p.is_empty());
+    let mut stmt = conn.prepare(&statement("spouse_wives")?).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(rusqlite::named_params! { ":husband_norm": normalize(husband), ":place": place },
+                              |r| Ok(Wife { iof: r.get(0)?, place: r.get(1)?, rank: r.get(2)?, name_surname: false }))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+    // Ключ — (имя и отчество, фамилия) в современном написании.
+    let mut groups: Vec<((String, String), Wife)> = Vec::new();
+    for wife in rows {
+        let p = parse_iof_in(conn, &wife.iof)?;
+        let name = [p.first_name_modern.or(p.first_name), p.patronymic_modern.or(p.patronymic)]
+            .into_iter().flatten().map(|w| normalize_name(&w)).collect::<Vec<_>>().join(" ");
+        let surname = p.surname.as_deref().map(normalize_name).unwrap_or_default();
+        match groups.iter_mut().find(|((n, s), _)| *n == name && (s.is_empty() || surname.is_empty() || *s == surname)) {
+            // Та же жена. Первое написание было без фамилии — берём это.
+            Some(((_, s), kept)) => {
+                if s.is_empty() && !surname.is_empty() {
+                    *s = surname;
+                    *kept = wife;
+                }
+            }
+            None => groups.push(((name, surname), wife)),
+        }
+    }
+    let mut out: Vec<Wife> = groups.into_iter().map(|(_, w)| w).take(WIVES_SHOWN).collect();
+    let flag = statement("person_name_surname")?;
+    for wife in out.iter_mut() {
+        wife.name_surname = conn.query_row(&flag, rusqlite::named_params! { ":iof": wife.iof, ":place": wife.place },
+                                           |r| r.get(0))
+            .optional().map_err(|e| e.to_string())?.unwrap_or(false);
+    }
+    Ok(out)
+}
+
 /// Один человек в подсказке персон: ИОФ в современном написании (имя и
 /// отчество из словаря, фамилия как есть), без регистра и конечного «ъ».
 /// «Ксения Александрова» и «Ксения Александровна» — один ключ (Роман
@@ -1486,6 +1542,56 @@ mod tests {
 
     use super::*;
     use std::path::Path;
+
+    /// Задача 5 (Роман 25.11.2026): жёны отца для строк подсказки — разные
+    /// жёны раздельно, одна жена в разных написаниях — одна, с фамилией; жена
+    /// чужого пункта не попадает; больше трёх — три. Имена выдуманы.
+    #[test]
+    fn wives_of_collapses_spellings() {
+        let seed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/seed.sqlite");
+        if !seed.exists() {
+            crate::seed_missing("тест жён отца пропущен");
+            return;
+        }
+        let path = std::env::temp_dir().join(format!("genmetric-wives-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::copy(&seed, &path).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        let add = |husband: &str, wife: &str, place: Option<&str>, at: &str| {
+            conn.execute("INSERT INTO spouse_index (husband_norm, wife_iof, wife_place, wife_rank, uses, last_used_at)
+                          VALUES (?1, ?2, ?3, 'законная жена его', 1, ?4)",
+                         rusqlite::params![normalize(husband), wife, place, at]).unwrap();
+        };
+        let names = |w: Vec<Wife>| w.into_iter().map(|w| w.iof).collect::<Vec<_>>();
+
+        // Два тёзки одного пункта: последняя набранная — первой.
+        add("Иван Петров Пробов", "Анна Сидорова Пробова", Some("Тестово"), "2026-01-01");
+        add("Иван Петров Пробов", "Евдокия Иванова Пробова", Some("Тестово"), "2026-01-02");
+        // Жена тёзки из другой деревни — не наша.
+        add("Иван Петров Пробов", "Ольга Ильина Пробова", Some("Другое"), "2026-01-03");
+        // Первая — она же без фамилии и в старом написании имени.
+        add("Иван Петров Пробов", "Анна Сидорова", Some("Тестово"), "2026-01-04");
+        assert_eq!(names(wives_of(&conn, "Иван Петров Пробов", Some("Тестово")).unwrap()),
+                   ["Анна Сидорова Пробова", "Евдокия Иванова Пробова"],
+                   "написание без фамилии — та же жена, берётся с фамилией");
+
+        // «Марья» и «Мария» — одно имя.
+        add("Петр Иванов Опытов", "Марья Ильина Опытова", Some("Тестово"), "2026-01-01");
+        add("Петр Иванов Опытов", "Мария Ильина Опытова", Some("Тестово"), "2026-01-02");
+        let one = wives_of(&conn, "Петр Иванов Опытов", Some("Тестово")).unwrap();
+        assert_eq!(one.len(), 1, "старое и новое написание имени — одна жена: {one:?}");
+
+        // Больше трёх — три.
+        for (i, w) in ["Анна", "Евдокия", "Ольга", "Татьяна"].iter().enumerate() {
+            add("Семен Ильин Многов", &format!("{w} Петрова Многова"), Some("Тестово"), &format!("2026-01-0{}", i + 1));
+        }
+        assert_eq!(wives_of(&conn, "Семен Ильин Многов", Some("Тестово")).unwrap().len(), WIVES_SHOWN);
+
+        // НП мужа неизвестен, жёны из разных пунктов — никого (как spouse_lookup).
+        assert!(wives_of(&conn, "Иван Петров Пробов", None).unwrap().is_empty());
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
 
     /// Задача 16 (Роман 23.11.2026): реквизиты — текущие, запись ложится в
     /// дело «год + реквизиты»; смена ФОД не трогает набранное; правка с

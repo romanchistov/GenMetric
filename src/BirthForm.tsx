@@ -5,7 +5,7 @@ import { SAVE_KEY } from "./keys";
 import { useEffect, useRef, useState } from "react";
 import { ScanLink, useEntryScan, useScan } from "./scan";
 import { invoke } from "@tauri-apps/api/core";
-import IofField, { type Parsed, type PersonHint } from "./IofField";
+import IofField, { type Parsed, type PersonHint, type Wife } from "./IofField";
 import PersonBlock, { EMPTY_PERSON, usePlaceRenamed, appendNote, markDocNotes, staleDocNotes, type DocFor, type Person, nameSurnameNow, nameSurnameOf } from "./PersonBlock";
 import { focusNextField } from "./focus";
 import NumberField from "./NumberField";
@@ -482,10 +482,12 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       place: hint.place ?? m.place,
       rank: m.rank || MOTHER_RANK,
     }));
-    invoke<{ iof: string; place: string | null; rank: string | null; name_surname?: boolean } | null>(
+    // Строка с женой (тёзки с разными жёнами, задача 5) — подставляется
+    // она, а не последняя набранная.
+    (hint.wife ? Promise.resolve(hint.wife) : invoke<Wife | null>(
       // НП мужа — чтобы не пришла жена его тёзки из другой деревни (Роман 09.10.2026).
       "suggest_spouse", { husband: hint.iof, place: hint.place ?? (latestFather.current.place.trim() || null) },
-    )
+    ))
       .then((wife) => {
         if (!wife) return;
         setMother((m) => ({
@@ -1316,6 +1318,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
         gender="М"
         defaultRank={editingId === null ? "father" : undefined}
         onPickPerson={pickFather}
+        withWives
         titleAfter={<FoldLink block="birth_father" onFold={() => foldFather(true)} />}
       />
       {motherFolded && (

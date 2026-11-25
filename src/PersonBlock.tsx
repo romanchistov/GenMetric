@@ -148,6 +148,8 @@ type Props = {
   onIofResolved?: () => void;
   /** Мать: «законная жена его» в подсказке персон — как есть. */
   keepWifeRank?: boolean;
+  /** Отец: тёзки с разными жёнами — строкой на жену (задача 5). */
+  withWives?: boolean;
   /** Блок свёрнут (Fold.tsx): он остаётся в окне, но не на экране — его
    *  состояние (тронутое руками звание, пометки сверки) переживает
    *  сворачивание, а обход клавишами скрытые поля пропускает сам. */
@@ -260,7 +262,7 @@ export default function PersonBlock({
   title, person, onChange, rankKind, withConfession, withMaiden, onPickPerson,
   inputRef, gender, genderGuessed, compact, placeDefaults, onPlaceRenamed, before, modernOverride, extra, titleExtra, noPlace, titleAfter, noNoteLink, rankAuto,
   confessionLabel, preferInfant, noIof, infantRows, infantYear, infantPlace,
-  defaultRank, enterToEmpty, onIofLeave, onIofResolved, keepWifeRank, hidden,
+  defaultRank, enterToEmpty, onIofLeave, onIofResolved, keepWifeRank, withWives, hidden,
 }: Props) {
   const latest = useRef(person);
   latest.current = person;
@@ -483,6 +485,7 @@ export default function PersonBlock({
         })}
         noSurnameMark={compact}
         keepWifeRank={keepWifeRank}
+        withWives={withWives}
         infantRows={infantRows}
         infantYear={infantYear}
         infantPlace={infantPlace === undefined ? person.place : infantPlace}

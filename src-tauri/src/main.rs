@@ -701,7 +701,7 @@ fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {
 
 
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct PersonHint {
     iof: String,
     place: Option<String>,
@@ -713,6 +713,10 @@ struct PersonHint {
     /// Год смерти: персона умерла, и событий после смерти нет (спека
     /// 2026-10-15-semya-celikom, п. 1.6). Такие — в конце списка с «†».
     died: Option<i64>,
+    /// Жена этой строки — у отца с разными жёнами строка на каждую (задача 5,
+    /// Роман 25.11.2026). Выбор подставляет её в мать.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wife: Option<genmetric_core::records::Wife>,
 }
 
 #[derive(Serialize)]
@@ -940,7 +944,8 @@ fn case_reqs_save(app: State<App>, reqs: Case) -> Result<(), String> {
 /// со званием приходилось набирать руками для каждой персоны.
 #[tauri::command]
 fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, limit: Option<i64>, gender: Option<String>,
-                  prefer_infant: Option<bool>, keep_wife_rank: Option<bool>, living: Option<bool>)
+                  prefer_infant: Option<bool>, keep_wife_rank: Option<bool>, living: Option<bool>,
+                  wives: Option<bool>)
     -> Result<Vec<PersonHint>, String>
 {
     // Умерший: младенцы из записей о рождении — первыми (Роман 28.09.2026).
@@ -960,7 +965,7 @@ fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, lim
         let hint = |r: &rusqlite::Row| -> rusqlite::Result<PersonHint> {
             Ok(PersonHint {
                 iof: r.get(0)?, place: r.get(1)?, rank: r.get(2)?,
-                gender: r.get(3)?, uses: r.get(4)?, name_surname: r.get(5)?, died: None,
+                gender: r.get(3)?, uses: r.get(4)?, name_surname: r.get(5)?, died: None, wife: None,
             })
         };
         let rows = match &mask {
@@ -1008,6 +1013,23 @@ fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, lim
             }
         }
         kept.truncate(limit as usize);
+        // Поле «Отец»: тёзки одного пункта с разными жёнами — строка на
+        // каждую жену (задача 5, Роман 25.11.2026: «Пользователь не видит,
+        // какого именно тезку он выбирает»). Одна жена — строка как была.
+        if wives.unwrap_or(false) {
+            let mut split = Vec::with_capacity(kept.len());
+            for hint in kept {
+                let found = genmetric_core::records::wives_of(conn, &hint.iof, hint.place.as_deref())?;
+                if found.len() < 2 {
+                    split.push(hint);
+                    continue;
+                }
+                for wife in found {
+                    split.push(PersonHint { wife: Some(wife), ..hint.clone() });
+                }
+            }
+            kept = split;
+        }
         Ok((kept, genmetric_core::search::changes(conn)?))
     })?;
     let (mut out, now) = found;

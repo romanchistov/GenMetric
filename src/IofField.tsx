@@ -48,7 +48,13 @@ export type PersonHint = {
   /** Год смерти: в живых ролях такие — в конце списка с «†» (Роман 16.10.2026:
    *  «это повод остановиться и разобраться»). */
   died?: number | null;
+  /** Жена этой строки: у отца с разными жёнами строка на каждую (задача 5,
+   *  Роман 25.11.2026). Выбор подставляет её в мать. */
+  wife?: Wife;
 };
+
+/** Жена из памяти пар — как `records::Wife` и ответ `suggest_spouse`. */
+export type Wife = { iof: string; place: string | null; rank: string | null; name_surname?: boolean };
 
 type InfantHint = {
   iof: string; gender: string | null; kin: string | null; parent: string | null;
@@ -126,6 +132,8 @@ type Props = {
    *  есть. В остальных полях звание жены показывается по званию мужа —
    *  «крестьянская жена» (Роман 06.10.2026). */
   keepWifeRank?: boolean;
+  /** Поле «Отец»: тёзки с разными жёнами — строкой на жену (задача 5). */
+  withWives?: boolean;
   /** Отметка «ИФ»: второе слово — фамилия (Роман 14.10.2026). Флажок
    *  показывается, когда в поле два слова; без обработчика — не показывается. */
   nameSurname?: boolean;
@@ -144,7 +152,7 @@ export default function IofField({
   infantRows,
   infantYear,
   infantPlace,
-  singleWord, enterToEmpty, onLeave, noSurnameMark, keepWifeRank, nameSurname, onNameSurname,
+  singleWord, enterToEmpty, onLeave, noSurnameMark, keepWifeRank, withWives, nameSurname, onNameSurname,
 }: Props) {
   const nameSurnameRef = useRef(!!nameSurname);
   nameSurnameRef.current = !!nameSurname;
@@ -291,6 +299,7 @@ export default function IofField({
             // их поднимать незачем.
             preferInfant: (preferInfant ?? false) && !infantRows,
             keepWifeRank: keepWifeRank ?? false,
+            wives: withWives ?? false,
             // Умерших — в конец списка, кроме поля «Умерший».
             living: !(preferInfant ?? false),
           })
@@ -748,9 +757,10 @@ export default function IofField({
                       {[p.infant.parent && `${p.infant.kin ?? "родитель"} ${p.infant.parent}`,
                         p.infant.place, p.infant.born && `род. ${p.infant.born}`].filter(Boolean).join(" · ")}
                     </span>
-                  ) : (p.place || p.rank) && (
-                    <span className="sub">
-                      {[p.rank, p.place].filter(Boolean).join(", ")}
+                  ) : (p.place || p.rank || p.wife) && (
+                    <span className="sub" data-wife={p.wife ? p.wife.iof : undefined}>
+                      {[[p.rank, p.place].filter(Boolean).join(", "),
+                        p.wife && `жена ${p.wife.iof}`].filter(Boolean).join(" · ")}
                     </span>
                   )}
                   {!p.infant && p.died ? <span className="died" data-died> † {p.died}</span> : null}

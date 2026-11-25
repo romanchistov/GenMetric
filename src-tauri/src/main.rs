@@ -717,6 +717,11 @@ struct PersonHint {
     /// Роман 25.11.2026). Выбор подставляет её в мать.
     #[serde(skip_serializing_if = "Option::is_none")]
     wife: Option<genmetric_core::records::Wife>,
+    /// Жена у строки единственная — подставляется, но не подписывается
+    /// (долг п. 25: у второго написания мужа она есть, а `suggest_spouse`
+    /// искал по первому, и мать оставалась пустой).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    lone_wife: bool,
 }
 
 #[derive(Serialize)]
@@ -962,7 +967,7 @@ fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, lim
         let hint = |r: &rusqlite::Row| -> rusqlite::Result<PersonHint> {
             Ok(PersonHint {
                 iof: r.get(0)?, place: r.get(1)?, rank: r.get(2)?,
-                gender: r.get(3)?, uses: r.get(4)?, name_surname: r.get(5)?, died: None, wife: None,
+                gender: r.get(3)?, uses: r.get(4)?, name_surname: r.get(5)?, died: None, wife: None, lone_wife: false,
             })
         };
         let rows = match &mask {
@@ -1021,7 +1026,12 @@ fn suggest_person(handle: tauri::AppHandle, app: State<App>, prefix: String, lim
                 let names: Vec<&str> = names.iter().map(String::as_str).collect();
                 let found = genmetric_core::records::wives_of(conn, &names, hint.place.as_deref())?;
                 if found.len() < 2 {
-                    split.push(hint);
+                    // НП строки неизвестен — прежний путь: форма зовёт
+                    // `suggest_spouse` с НП из поля отца, иначе пришла бы
+                    // жена из чужой деревни (ревьюер 25.11.2026; «чужая жена
+                    // хуже пустого поля», 09.10.2026).
+                    let wife = found.into_iter().next().filter(|_| hint.place.is_some());
+                    split.push(PersonHint { lone_wife: wife.is_some(), wife, ..hint });
                     continue;
                 }
                 for wife in found {

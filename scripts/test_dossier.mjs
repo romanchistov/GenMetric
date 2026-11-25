@@ -3,7 +3,7 @@
  * Проверка слов досье — src/dossier.ts (Роман 09.10.2026: «хронологическое
  * „досье“ человека»). Запуск: node --experimental-strip-types scripts/test_dossier.mjs
  */
-import { ageWords, childYear, dateOf, describe, diedMark, eventKind, family, familyTimeline, marriageLine, nameless, personTail, roleKind } from "../src/dossier.ts";
+import { ageWords, bornMark, childYear, dateOf, describe, diedMark, eventKind, family, familyTimeline, marriageLine, nameless, personTail, roleKind } from "../src/dossier.ts";
 
 let ok = 0, bad = 0;
 const check = (title, cond, detail = "") => {
@@ -146,6 +146,11 @@ console.log("\nСвоё рождение (спека 2026-10-15-semya-celikom)\n
   const f = family([own, ev(3, m("deceased", "Мария", { gender: "Ж" }), [m("deceased_relative", "Иван Капитонов", { kinship: "отец" })], { year: 1890 })]);
   check("«Семья»: родители из собственного рождения", !!f.parents && f.parents.father?.iof === "Иван Капитонов" && f.parents.mother?.iof === "Анна Петрова");
   check("без своего рождения родителей нет", family([ev(1, father, [girl, mother])]).parents === null);
+  // Задача 8: разброс больше 7 лет — период, иначе «ок.» по середине.
+  check("год рождения: своё, период, «ок.», пусто",
+    bornMark(1886, [1800, 1900]) === "р. 1886" && bornMark(null, [1855, 1873]) === "р. 1855–1873"
+    && bornMark(null, [1888, 1893]) === "р. ок. 1890" && bornMark(null, [1875, 1882]) === "р. ок. 1878"
+    && bornMark(null, [1875, 1883]) === "р. 1875–1883" && bornMark(null, null) === "" && bornMark(undefined, undefined) === "");
   check("«†» — у умершего, у живого пусто", diedMark(1890) === "† 1890" && diedMark(null) === "" && diedMark(undefined) === "");
   // Смерть своего ребёнка — «свои события» (Роман 19.10.2026).
   check("смерть ребёнка у отца — «свои события», у брата — «участие»",

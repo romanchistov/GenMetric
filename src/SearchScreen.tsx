@@ -4,7 +4,7 @@ import Suggest from "./Suggest";
 import { report } from "./errors";
 import { ScanLink } from "./scan";
 import { focusNextField } from "./focus";
-import { ageWords, childYear, dateOf, describe, diedMark, eventKind, family, familyTimeline, marriageLine, nameless, personTail, type DossierEvent, type Mention, type Part } from "./dossier";
+import { ageWords, bornMark, childYear, dateOf, describe, diedMark, eventKind, family, familyTimeline, marriageLine, nameless, personTail, type DossierEvent, type Mention, type Part } from "./dossier";
 
 /**
  * Экран «Поиск»: персона по приходу и её досье (спека
@@ -25,10 +25,10 @@ import { ageWords, childYear, dateOf, describe, diedMark, eventKind, family, fam
  */
 
 type PersonHit = { key: string; iof: string; place: string; mentions: number; year_from: number | null; year_to: number | null;
-                  role?: string; born?: number | null; died?: number | null; also?: string[]; spouse?: string | null };
+                  role?: string; born?: number | null; born_about?: [number, number] | null; died?: number | null; also?: string[]; spouse?: string | null };
 type Found = { persons: PersonHit[]; total: number };
 type Dossier = { iof: string; place: string; ranks: string[]; mentions: number; events: DossierEvent[];
-                 born?: number | null; died?: number | null; possible?: PersonHit[] };
+                 born?: number | null; born_about?: [number, number] | null; died?: number | null; possible?: PersonHit[] };
 
 /** С чем экран открыли из формы: ИОФ и НП персоны под курсором. */
 export type SearchRequest = { iof: string; place: string; clergy: boolean; n: number };
@@ -397,7 +397,7 @@ export default function SearchScreen({ active, request, onOpenEntry, onBack, bac
                   return (
                     <li key={`${p.key}|${p.place}`} className={on ? "on" : ""} data-hit={p.iof}
                         onMouseDown={(e) => { e.preventDefault(); setPicked({ key: p.key, place: p.place }); }}>
-                      <span className="val">{p.iof}<span className="sub">{[p.place || "без НП", p.born ? `р. ${p.born}` : "", diedMark(p.died),
+                      <span className="val">{p.iof}<span className="sub">{[p.place || "без НП", bornMark(p.born, p.born_about), diedMark(p.died),
                         // Женщина — и с девичьей фамилией, и с фамилией мужа (спека, п. 2.3).
                         (p.also ?? []).length ? `также: ${(p.also ?? []).join("; ")}` : ""].filter(Boolean).join(" · ")}</span></span>
                       <span className="tier">{years(p.year_from, p.year_to)} · {p.mentions}</span>
@@ -425,6 +425,7 @@ export default function SearchScreen({ active, request, onOpenEntry, onBack, bac
               Собрано по совпадению ИОФ и НП: упоминаний {dossier.mentions}.{" "}
               {dossier.born ? `Своё рождение (${dossier.born}) прикреплено: имя, отчество по отцу и пункт сходятся, возраст не противоречит. `
                 : (dossier.possible ?? []).length > 0 ? "Своё рождение не прикреплено: подходящих несколько — см. «Возможно» ниже. " : ""}
+              {!dossier.born && dossier.born_about ? `Год рождения примерный (${bornMark(null, dossier.born_about)}): по записанному возрасту, а без него — по ролям (родители 17–55 лет, отец до 70, восприемники 6–60, поручители 17–60). ` : ""}
               {dossier.died ? `Смерть — ${dossier.died}. ` : ""}
               Тёзки с разными супругами — разные досье; женщина до и после замужества — одно досье, если муж тот же.
             </p>
@@ -442,7 +443,7 @@ export default function SearchScreen({ active, request, onOpenEntry, onBack, bac
                                                   rank: null, gender: null, age: null, death_cause: null, marriage_order: null, kinship: null, note: null })}>
                         {p.iof}
                       </button>
-                      <span className="sub"> · {[p.place || "без НП", p.spouse ? `${["mother", "bride"].includes((p.role ?? "").replace(/\d+$/, "")) ? "муж" : ["father", "groom"].includes((p.role ?? "").replace(/\d+$/, "")) ? "жена" : "супруг(а)"}: ${p.spouse}` : "", p.born ? `р. ${p.born}` : "",
+                      <span className="sub"> · {[p.place || "без НП", p.spouse ? `${["mother", "bride"].includes((p.role ?? "").replace(/\d+$/, "")) ? "муж" : ["father", "groom"].includes((p.role ?? "").replace(/\d+$/, "")) ? "жена" : "супруг(а)"}: ${p.spouse}` : "", bornMark(p.born, p.born_about),
                                                   // Годы — если они не тот же год рождения или смерти.
                                                   [p.born, p.died].includes(p.year_from) && p.year_from === p.year_to ? "" : years(p.year_from, p.year_to), diedMark(p.died),
                                                   `упоминаний ${p.mentions}`].filter(Boolean).join(" · ")}</span>

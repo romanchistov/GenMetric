@@ -677,7 +677,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
       )}
       <section>
         <div className="row tight">
-          <NumberField label="Год" value={year} onChange={(v) => yearHand.byHand(v, setYear)} min={1700} max={1930}
+          <NumberField label="Год" value={year} onChange={(v) => yearHand.byHand(v, setYear)} min={1700} max={1930} noEmptyStep
                        onLeave={yearHand.leave} />
           <PageField label="Стр." value={page} onChange={setPage} />
           {/* Вне обхода клавишами: «нумерация идет строго по порядку» (Роман

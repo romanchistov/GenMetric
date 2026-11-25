@@ -28,10 +28,14 @@ type Props = {
   /** Значение поставила программа, и оно не то, что в прошлой записи (месяц
    *  переключился сам) — поле подсвечено нейтральным цветом. */
   auto?: boolean;
+  /** «+» и «−» в пустом поле ничего не ставят, поле мигает (год записи:
+   *  «+» из пустого давал 1700, и скан уносил выбранную папку на 1700 год —
+   *  долг п. 17, ревьюер 24.11.2026). */
+  noEmptyStep?: boolean;
 };
 
 export default function NumberField({
-  label, value, onChange, min = 0, max: limit, width, inputRef, noTab, onLeave, auto,
+  label, value, onChange, min = 0, max: limit, width, inputRef, noTab, onLeave, auto, noEmptyStep,
 }: Props) {
   const max = limit ?? 9999;
   const own = useRef<HTMLInputElement>(null);
@@ -47,6 +51,10 @@ export default function NumberField({
   }
 
   function step(delta: number) {
+    if (value === null && noEmptyStep) {
+      reject();
+      return;
+    }
     const base = value ?? (delta > 0 ? min - 1 : min + 1);
     const next = Math.min(max, Math.max(min, base + delta));
     onChange(next);

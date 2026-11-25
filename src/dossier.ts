@@ -342,5 +342,16 @@ export function familyTimeline(fam: Family): FamilyItem[] {
   return items.sort((a, b) => at(a.year) - at(b.year) || (a.kind === b.kind ? 0 : a.kind === "marriage" ? -1 : 1));
 }
 
+/** Год рождения в строке поиска и в досье (задача 8): своё рождение — «р.
+ *  1886»; примерные годы [от, до] — период «р. 1855–1873», если разброс
+ *  больше 7 лет, иначе «р. ок. Y» по середине (Роман 25.11.2026: «если
+ *  разброс больше 7 лет, то лучше период, а меньше можно около»). */
+export const bornMark = (born: number | null | undefined, about?: [number, number] | null) => {
+  if (born) return `р. ${born}`;
+  if (!about) return "";
+  const [from, to] = about;
+  return to - from > 7 ? `р. ${from}–${to}` : `р. ок. ${Math.floor((from + to) / 2)}`;
+};
+
 /** «† 1887» — у умершего; пусто — у живого или неизвестного. */
 export const diedMark = (died: number | null | undefined) => (died ? `† ${died}` : "");

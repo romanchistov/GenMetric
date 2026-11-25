@@ -1202,7 +1202,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       )}
       <section>
         <div className="row tight">
-          <NumberField label="Год" value={year} onChange={(v) => yearHand.byHand(v, setYear)} min={1700} max={1930}
+          <NumberField label="Год" value={year} onChange={(v) => yearHand.byHand(v, setYear)} min={1700} max={1930} noEmptyStep
                        onLeave={yearHand.leave} />
           <PageField label="Стр." value={page} onChange={setPage} />
           {/* Вне обхода клавишами: счёт ставится сам, по полу ребёнка (Роман

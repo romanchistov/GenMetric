@@ -231,6 +231,55 @@ fn loose_range(rows: &[Row], mine: &[usize]) -> Option<(i64, i64)> {
     order.iter().fold(None, |acc, &i| meet(acc, born_range(&rows[i])).unwrap_or(acc))
 }
 
+/// Годы рождения по записанному возрасту — для экрана (задача 8, спека
+/// 2026-11-25-primernyj-god-rozhdeniya). Роман 25.11.2026: «разлёт от
+/// возраста … я бы взял 10%, может чуть больше, если ему 60 лет, то значит
+/// разбрось 6 лет» — 10 % с округлением вверх, не меньше 3 лет; ребёнок до
+/// 10 лет — ± 1 год. Склейка досье считает по-своему (`born_range`, ± 5).
+fn age_years_shown(r: &Row) -> Option<(i64, i64)> {
+    if !stated(r) {
+        return None;
+    }
+    let y = r.year?;
+    Some(match r.age_years {
+        Some(a) if a > 10 => {
+            let d = ((a + 9) / 10).max(3);
+            (y - a - d, y - a + d)
+        }
+        Some(a) if a > 0 => (y - a - 1, y - a + 1),
+        _ => (y - 1, y),
+    })
+}
+
+/// Годы рождения по роли — таблица индексатора А.К. «Для прогноза года
+/// рождения»; отец — до 70 (Роман 25.11.2026: «отца допускаем до 70 лет»).
+fn role_years_shown(r: &Row) -> Option<(i64, i64)> {
+    let y = r.year?;
+    let (lo, hi) = match r.role.trim_end_matches(|c: char| c.is_ascii_digit()) {
+        "father" => (17, 70),
+        "mother" => (17, 55),
+        "godparent" => (6, 60),
+        "witness" | "death_witness" => (17, 60),
+        _ => return None,
+    };
+    Some((y - hi, y - lo))
+}
+
+/// Примерные годы рождения персоны без своего рождения: пересечение по
+/// записанным возрастам, а если их нет — по ролям. Не пересекаются — None:
+/// неверный год хуже пустого места. Как показать (период или «ок.»), решает
+/// окно (`bornMark` в `src/dossier.ts`).
+pub(super) fn born_about(rows: &[Row], mine: &[usize]) -> Option<(i64, i64)> {
+    let common = |f: fn(&Row) -> Option<(i64, i64)>| {
+        mine.iter().filter_map(|&i| f(&rows[i])).try_fold(None, |acc, r| meet(acc, Some(r)))
+    };
+    match common(age_years_shown) {
+        Ok(Some(r)) => Some(r),
+        Err(()) => None,
+        Ok(None) => common(role_years_shown).ok().flatten(),
+    }
+}
+
 /// Ключ досье, который не меняется при пересохранении записи: номер
 /// упоминания меняется (запись переписывает людей заново), а номер записи и
 /// место человека в ней — нет (долг п. 74).

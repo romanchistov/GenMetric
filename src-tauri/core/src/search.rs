@@ -72,6 +72,9 @@ pub struct PersonHit {
     pub role: String,
     /// Год собственного рождения, если оно прикреплено.
     pub born: Option<i64>,
+    /// Своего рождения нет — примерные годы рождения [от, до] по возрасту
+    /// или ролям (задача 8, `family::born_about`).
+    pub born_about: Option<(i64, i64)>,
     /// Год смерти, если она есть и событий после неё нет.
     pub died: Option<i64>,
 }
@@ -143,6 +146,7 @@ pub struct Dossier {
     pub events: Vec<Event>,
     /// Год собственного рождения, если оно прикреплено, и год смерти.
     pub born: Option<i64>,
+    pub born_about: Option<(i64, i64)>,
     pub died: Option<i64>,
     /// «Возможно, тот же человек» — без слияния (спека, «Общее»).
     pub possible: Vec<PersonHit>,
@@ -559,6 +563,13 @@ impl Index {
         p.rows.iter().map(|&i| &self.rows[i]).filter(|r| passes(r, f, place)).collect()
     }
 
+    /// Примерные годы рождения — только без своего рождения; по всем
+    /// упоминаниям персоны, а не по отобранным экраном (как `born`, `died`).
+    fn born_about(&self, n: usize) -> Option<(i64, i64)> {
+        let p = &self.persons[n];
+        if p.birth.is_some() { None } else { family::born_about(&self.rows, &p.rows) }
+    }
+
     /// Строка списка персоны. ИОФ — как у взрослого, если он есть: у
     /// рождения фамилия отца, а сам он мог записываться без неё.
     fn hit(&self, n: usize, mine: &[&Row]) -> PersonHit {
@@ -593,6 +604,7 @@ impl Index {
             year_from: years.iter().min().copied(),
             year_to: years.iter().max().copied(),
             born: p.birth.and_then(|i| self.rows[i].year),
+            born_about: self.born_about(n),
             died: p.died,
         }
     }
@@ -785,6 +797,7 @@ pub fn dossier_in(index: &Index, key: &str, place: &str, f: &Filter) -> Dossier 
         mentions: mine.len(),
         events,
         born: person.and_then(|p| p.birth).and_then(|i| rows[i].year),
+        born_about: n.and_then(|n| index.born_about(n)),
         died: person.and_then(|p| p.died),
         possible,
     }
@@ -881,6 +894,78 @@ mod tests {
     fn priest_clone(p: &PersonInput) -> PersonInput {
         person(&p.role_code, p.sort_order, (p.first_name.as_deref().unwrap_or(""), "", p.surname.as_deref().unwrap_or("")),
                (p.first_name_modern.as_deref().unwrap_or(""), ""), "", p.rank.as_deref().unwrap_or(""), "М")
+    }
+
+    /// Задача 8 (спека 2026-11-25-primernyj-god-rozhdeniya): примерные годы
+    /// рождения — по записанному возрасту, иначе по ролям; имена выдуманы.
+    #[test]
+    fn born_about_by_age_and_roles() {
+        let Some((path, conn)) = fresh("about") else { return };
+        let man = |role: &str, order: i64, first: &str, place: &str| person(role, order, (first, "Пробов", "Опытов"), (first, "Пробович"), place, "крестьянин", "М");
+        let woman = |role: &str, order: i64, first: &str, place: &str| person(role, order, (first, "Пробова", "Опытова"), (first, "Пробовна"), place, "крестьянка", "Ж");
+        let aged = |mut p: PersonInput, age: i64| { p.age_years = Some(age); p.age_text = Some(age.to_string()); p };
+        let bride = |place: &str| person("bride", 20, ("Дарья", "Иванова", "Сводова"), ("Дарья", "Ивановна"), place, "", "Ж");
+        let marry = |year: i64, groom: PersonInput, more: Vec<PersonInput>| {
+            let place = groom.place.clone().unwrap();
+            let mut people = vec![groom, bride(&place)];
+            people.extend(more);
+            save_entry(&conn, &entry(2, year, 10, 1, "1", people)).unwrap();
+        };
+        let die = |year: i64, p: PersonInput| save_entry(&conn, &entry(3, year, 5, 5, "2", vec![p])).unwrap();
+        let birth = |year: i64, child: &str, people: Vec<PersonInput>| {
+            let mut all = vec![person("child", 10, (child, "", ""), (child, ""), "", "", "М")];
+            all.extend(people);
+            save_entry(&conn, &entry(1, year, 3, 3, "3", all)).unwrap();
+        };
+        // Пример Романа: брак «25 лет» 1915 (1887–1893) + смерть «60 лет» 1954
+        // (1888–1900) — пересечение 1888–1893.
+        marry(1915, aged(man("groom", 10, "Агафон", "Аново"), 25), vec![]);
+        die(1954, aged(man("deceased", 10, "Агафон", "Аново"), 60));
+        // Брак «22 лет» 1900 (1875–1881) + смерть «30 лет» 1915 (1882–1888):
+        // склейка (± 5) держит их одним досье, на экране не сходятся.
+        marry(1900, aged(man("groom", 10, "Борис", "Борово"), 22), vec![]);
+        die(1915, aged(man("deceased", 10, "Борис", "Борово"), 30));
+        // Одна смерть «48 лет» 1950 — 1897–1907.
+        die(1950, aged(man("deceased", 10, "Влас", "Вилово"), 48));
+        // Граница разлёта: 10 лет — ± 1, 11 лет — уже ± 3.
+        die(1900, aged(man("deceased", 10, "Ипат", "Ивово"), 10));
+        die(1900, aged(man("deceased", 10, "Кирилл", "Киево"), 11));
+        // Родители в рождениях 1890 и 1910: отец 17–70, мать 17–55.
+        for (year, child) in [(1890, "Илья"), (1910, "Кузьма")] {
+            birth(year, child, vec![man("father", 20, "Гордей", "Гарино"), woman("mother", 30, "Глафира", "Гарино")]);
+        }
+        // Восприемник 6–60 в рождении 1890, поручитель 17–60 в браке 1890.
+        birth(1890, "Лука", vec![man("father", 20, "Евсей", "Ежово"), man("godparent1", 40, "Демид", "Дубово")]);
+        marry(1890, man("groom", 10, "Ерофей", "Ежово"), vec![man("witness1", 60, "Ждан", "Жарово")]);
+        // Отец, умерший с возрастом: возраст важнее роли.
+        birth(1890, "Макар", vec![man("father", 20, "Зосим", "Зотово")]);
+        die(1920, aged(man("deceased", 10, "Зосим", "Зотово"), 60));
+
+        let about = |first: &str, place: &str| -> (Option<i64>, Option<(i64, i64)>) {
+            let f = Filter { query: format!("{first} пробович"), place: Some(place.into()), ..all() };
+            let hits = find(&conn, &f).unwrap().persons;
+            assert_eq!(hits.len(), 1, "{first} из {place} — одна персона: {hits:?}");
+            (hits[0].born, hits[0].born_about)
+        };
+        assert_eq!(about("Агафон", "Аново"), (None, Some((1888, 1893))), "возраст ± 10 %, не меньше 3 лет; пересечение");
+        assert_eq!(about("Борис", "Борово"), (None, None), "диапазоны по возрасту не сходятся — года нет");
+        assert_eq!(about("Влас", "Вилово"), (None, Some((1897, 1907))), "48 лет — разлёт 5");
+        assert_eq!((about("Ипат", "Ивово"), about("Кирилл", "Киево")), ((None, Some((1889, 1891))), (None, Some((1886, 1892)))),
+                   "10 лет — ± 1 год, 11 — ± 3");
+        assert_eq!(about("Гордей", "Гарино"), (None, Some((1840, 1873))), "отец 17–70 по двум рождениям");
+        assert_eq!(about("Демид", "Дубово"), (None, Some((1830, 1884))), "восприемник 6–60");
+        assert_eq!(about("Ждан", "Жарово"), (None, Some((1830, 1873))), "поручитель 17–60");
+        assert_eq!(about("Зосим", "Зотово"), (None, Some((1854, 1866))), "возраст в смерти, роль отца не сужает");
+        let glafira = find(&conn, &Filter { query: "глафира".into(), ..all() }).unwrap().persons;
+        assert_eq!(glafira.iter().map(|h| h.born_about).collect::<Vec<_>>(), vec![Some((1855, 1873))], "мать 17–55");
+        // Ребёнок со своим рождением — точный год, примерного нет.
+        let ilya = find(&conn, &Filter { query: "илья гордеевич".into(), ..all() }).unwrap().persons;
+        assert_eq!(ilya.iter().map(|h| (h.born, h.born_about)).collect::<Vec<_>>(), vec![(Some(1890), None)]);
+        // Досье — те же годы.
+        let key = find(&conn, &Filter { query: "агафон пробович".into(), ..all() }).unwrap().persons[0].key.clone();
+        assert_eq!(dossier(&conn, &key, "Аново", &all()).unwrap().born_about, Some((1888, 1893)));
+        drop(conn);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -1579,6 +1664,19 @@ mod tests {
         let women = index.persons.iter().filter(|p| p.merged_into.is_none() && p.rows.iter().any(|&i| index.rows[i].role == "bride")
             && p.rows.iter().any(|&i| index.rows[i].role == "mother")).count();
         println!("частей после разделения по супругам: {split}; влито (фамилия, жена): {absorbed}; женщин «невеста + мать»: {women}");
+        // Задача 8: сколько персон без своего рождения получают примерный год.
+        let (mut about_ok, mut about_period, mut about_none) = (0, 0, 0);
+        for (n, p) in index.persons.iter().enumerate() {
+            if p.merged_into.is_some() || p.birth.is_some() || p.rows.iter().all(|&i| index.rows[i].role.starts_with("clergy")) {
+                continue;
+            }
+            match index.born_about(n) {
+                Some((a, b)) if b - a > 7 => about_period += 1,
+                Some(_) => about_ok += 1,
+                None => about_none += 1,
+            }
+        }
+        println!("без своего рождения: «ок.» {about_ok}, период {about_period}, без года {about_none}");
         for p in index.persons.iter().filter(|p| p.merged_into.is_none() && p.rows.iter().any(|&i| index.rows[i].role == "bride")
             && p.rows.iter().any(|&i| index.rows[i].role == "mother")).take(4) {
             let line: Vec<String> = p.rows.iter().map(|&i| format!("{}:{}:{}:{:?}", index.rows[i].role, index.rows[i].iof(), index.rows[i].place, index.rows[i].year)).collect();

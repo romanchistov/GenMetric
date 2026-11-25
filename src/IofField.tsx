@@ -51,6 +51,8 @@ export type PersonHint = {
   /** Жена этой строки: у отца с разными жёнами строка на каждую (задача 5,
    *  Роман 25.11.2026). Выбор подставляет её в мать. */
   wife?: Wife;
+  /** Жена единственная — подставляется, но не подписывается (долг п. 25). */
+  lone_wife?: boolean;
 };
 
 /** Жена из памяти пар — как `records::Wife` и ответ `suggest_spouse`. */
@@ -757,10 +759,10 @@ export default function IofField({
                       {[p.infant.parent && `${p.infant.kin ?? "родитель"} ${p.infant.parent}`,
                         p.infant.place, p.infant.born && `род. ${p.infant.born}`].filter(Boolean).join(" · ")}
                     </span>
-                  ) : (p.place || p.rank || p.wife) && (
-                    <span className="sub" data-wife={p.wife ? p.wife.iof : undefined}>
+                  ) : (p.place || p.rank || (p.wife && !p.lone_wife)) && (
+                    <span className="sub" data-wife={p.wife && !p.lone_wife ? p.wife.iof : undefined}>
                       {[[p.rank, p.place].filter(Boolean).join(", "),
-                        p.wife && `жена ${p.wife.iof}`].filter(Boolean).join(" · ")}
+                        p.wife && !p.lone_wife && `жена ${p.wife.iof}`].filter(Boolean).join(" · ")}
                     </span>
                   )}
                   {!p.infant && p.died ? <span className="died" data-died> † {p.died}</span> : null}

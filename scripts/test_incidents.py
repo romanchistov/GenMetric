@@ -1164,9 +1164,9 @@ def incident_20261008_chistaya_postavka():
     check("«законная жена его» вне поля матери — по званию мужа",
           'hint.rank = Some(genmetric_core::records::wife_rank(rank.as_deref()).to_string());' in main_rs
           and "keepWifeRank" in read("src/BirthForm.tsx").split('title="Мать"', 1)[-1][:500])
-    check("версия схемы 13 — в сборщике и в программе (10 — комментарий пункта, 11 — файл скана у записи, "
-          "12 — объединённые пункты, 13 — слияние приходов)",
-          "SCHEMA_VERSION = 13" in build and "SCHEMA_VERSION: i64 = 13" in read("src-tauri/core/src/db.rs"))
+    check("версия схемы 14 — в сборщике и в программе (10 — комментарий пункта, 11 — файл скана у записи, "
+          "12 — объединённые пункты, 13 — слияние приходов, 14 — «чей родственник»)",
+          "SCHEMA_VERSION = 14" in build and "SCHEMA_VERSION: i64 = 14" in read("src-tauri/core/src/db.rs"))
 
 
 def incident_20261009_otvet_na_sborku_08_10():

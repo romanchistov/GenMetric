@@ -111,8 +111,9 @@ def main() -> int:
     # 23 с 21.09.2026: восприемники 3 и 4 — «в шаблоне Familio присутствует 4».
     # 25 с 27.09.2026: поручители 5 и 6 — «ещё двух поручителей» (Роман).
     # 27 с 06.11.2026: свидетели смерти 1 и 2 (Роман: в ранних книгах «два свидетеля»).
-    check("27 ролей", one("SELECT count(*) FROM role") == 27)
-    for section, expected in [(1, 7), (2, 11), (3, 6), (0, 3)]:
+    # 31 с 25.11.2026: родственники восприемника и поручителя (задача 7).
+    check("31 роль", one("SELECT count(*) FROM role") == 31)
+    for section, expected in [(1, 9), (2, 13), (3, 6), (0, 3)]:
         check(f"ролей в разделе {section}",
               one("SELECT count(*) FROM role WHERE section=?", section) == expected)
     check("коридор родителей 17-55",
@@ -153,7 +154,8 @@ def main() -> int:
                      FROM lookup_kind k LEFT JOIN lookup l ON l.kind = k.kind
                     GROUP BY k.kind, k.title
                     ORDER BY count(l.id) DESC, k.title""")
-    check("состав справочников считается", len(summary) == 15, f"{len(summary)} перечней")
+    # 16 с 25.11.2026: «Чей родственник» (задача 7).
+    check("состав справочников считается", len(summary) == 16, f"{len(summary)} перечней")
     check("в сводке нет перечней без названия", all(r[1] for r in summary))
 
     print("\n6. Ранжирование подсказок по частоте")

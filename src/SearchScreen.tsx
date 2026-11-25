@@ -52,7 +52,8 @@ const ROLES: Record<RoleGroup, [string, string][]> = {
   own: [["child", "своё рождение"], ["groom", "жених"], ["bride", "невеста"], ["father", "отец"], ["mother", "мать"], ["deceased", "умерший"]],
   part: [["godparent", "восприемник"], ["witness", "поручитель"], ["groom_relative", "родственник жениха"],
          ["bride_relative", "родственник невесты"], ["deceased_relative", "родственник умершего"],
-         ["death_witness", "свидетель смерти"]],
+         ["death_witness", "свидетель смерти"], ["kin_godparent", "родственник восприемника"],
+         ["kin_witness", "родственник поручителя"]],
   clergy: [["clergy", "причт"]],
 };
 const years = (a: number | null, b: number | null) => (a === null ? "" : a === b || b === null ? String(a) : `${a}–${b}`);

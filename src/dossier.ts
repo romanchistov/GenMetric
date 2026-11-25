@@ -33,6 +33,8 @@ export type Mention = {
   death_cause: string | null;
   marriage_order: string | null;
   kinship: string | null;
+  /** Чей родственник: «восприемника №2» (задача 7, search.rs). */
+  kin_of?: string | null;
   note: string | null;
   /** Год смерти этого человека, если он умер (search.rs, Mention). */
   died?: number | null;
@@ -186,6 +188,15 @@ export function describe(e: DossierEvent): { what: string; who: Part[] } {
   }
   if (role.startsWith("witness")) {
     return { what: ["поручитель", (me.note ?? "").trim()].filter(Boolean).join(" "), who: couple(e) };
+  }
+  // Родственник восприемника, родителя, поручителя (задача 7): «муж
+  // восприемника №2», а кто в записи — ребёнок с родителями или пара.
+  if (role.startsWith("kin_")) {
+    const whose = (me.kin_of ?? "").trim() || (role.startsWith("kin_godparent") ? "восприемника или родителя" : "поручителя");
+    return { what: relWord(me, whose),
+             who: role.startsWith("kin_godparent")
+               ? join(named("ребёнок", child), named("отец", one(e, "father")), named("мать", one(e, "mother")))
+               : couple(e) };
   }
   if (role === "groom_relative" || role === "bride_relative" || role === "bride_parent") {
     return { what: relWord(me, role === "groom_relative" ? "жениха" : "невесты"), who: couple(e) };

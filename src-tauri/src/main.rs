@@ -1971,6 +1971,8 @@ struct MentionOut {
     /// (проверяющий 02.11.2026).
     age_months: Option<i64>,
     death_cause: Option<String>,
+    /// Чей родственник (схема 14, задача 7).
+    kin_of: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2015,6 +2017,7 @@ fn entry_load(app: State<App>, id: i64) -> Result<EntryFull, String> {
                     rank: r.get(10)?, confession: r.get(11)?, place: r.get(12)?, note: r.get(13)?,
                     age_years: r.get(15)?, marriage_order: r.get(16)?, kinship: r.get(17)?,
                     age_text: r.get(18)?, death_cause: r.get(19)?, age_months: r.get(20)?,
+                    kin_of: r.get(21)?,
                 })
             })
             .map_err(|e| e.to_string())?;

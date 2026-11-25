@@ -23,6 +23,7 @@ import type { FormProps } from "./formprops";
 import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
 import { FoldLine, FoldLink, foldSummary, useFold } from "./Fold";
+import { kinExtra, kinFilled, kinOf, kinSex, NEW_KIN, type Kin } from "./kin";
 
 /**
  * Форма ввода записи о браке (25.09.2026) — по образцу рождений.
@@ -116,6 +117,7 @@ type MentionOut = {
   role_code: string; surname: string | null; first_name: string | null; patronymic: string | null;
   gender: string | null; rank: string | null; confession: string | null; place: string | null;
   note: string | null; age_years: number | null; age_text: string | null; age_months: number | null; marriage_order: string | null; kinship: string | null;
+  kin_of?: string | null;
 };
 type EntryFull = {
   scan_file?: string | null;
@@ -155,6 +157,9 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
   const [w5, setW5] = useState<Witness>(() => newWitness(4));
   const [w6, setW6] = useState<Witness>(() => newWitness(5));
   const [witnessCount, setWitnessCount] = useState(4);
+  // Родственник поручителя или жениха № * и … невесты № ** (задача 7).
+  const [kin1, setKin1] = useState<Kin>(NEW_KIN);
+  const [kin2, setKin2] = useState<Kin>(NEW_KIN);
   // Причт общий для всех разделов (27.09.2026) — clergy.tsx.
   const clergyState = useFormClergy();
   const [clergy1, clergy2, clergy3] = clergyState.people;
@@ -320,15 +325,18 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
   async function save() {
     let g = groom, b = bride, gr = groomRel, br = brideRel;
     let ws = witnesses.slice(0, witnessCount), cl = [clergy1, clergy2, clergy3];
+    let ks = [kin1, kin2];
     // Свёрнутый блок: поля ИОФ на экране нет, разбор имени мог устареть —
     // разбираем заново (BirthForm, стенд 09.10.2026).
     const stale = <T extends Person>(p: T, folded: boolean): T => (folded ? { ...p, parsed: null } : p);
     g = stale(g, groomFolded); b = stale(b, brideFolded);
     gr = stale(gr, groomRelFolded); br = stale(br, brideRelFolded);
     ws = ws.map((w) => stale(w, witnessesFolded));
+    ks = ks.map((k) => stale(k, kinFolded));
     try {
       [g, b, gr, br] = await Promise.all([g, b, gr, br].map(withParsed)) as [Spouse, Spouse, Relative, Relative];
       ws = await Promise.all(ws.map(withParsed));
+      ks = await Promise.all(ks.map(withParsed));
       cl = await Promise.all(cl.map(withParsed));
     } catch (e) {
       report("Не удалось разобрать имена перед сохранением", e);
@@ -337,6 +345,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
     const named: [string, Person][] = [
       ["жениха", g], ["невесты", b], ["родственника жениха", gr], ["родственника невесты", br],
       ...ws.map((w) => ["поручителя", w] as [string, Person]),
+      ...ks.map((k) => ["родственника поручителя", k] as [string, Person]),
       ...cl.map((c) => ["причта", c] as [string, Person]),
     ];
     // Без имени сверять нечего — «Имя причта «null»» (п. 164, 16.11.2026).
@@ -382,6 +391,9 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
       // Порядок — как в role.csv (60…90, 92, 94): причт с 100, пересекаться нельзя.
       persons.push(payload(`witness${i + 1}`, WITNESS_ORDER[i], { ...w, note }));
     });
+    // Родственники поручителя или жениха/невесты (задача 7): порядок 96, 98 —
+    // после поручителей, до причта (role.csv).
+    ks.forEach((k, i) => { if (kinFilled(k)) persons.push(payload(`kin_witness${i + 1}`, 96 + 2 * i, k, kinExtra(k), kinSex(k.kinship))); });
     // Звание без имени (п. 9) пересохранение на правке не стирает — пометка
     // остаётся; в новую запись оно не пишется (ревьюер 23.11.2026).
     cl.forEach((c, i) => { if (c.iof.trim() || (editingId !== null && c.rank.trim())) persons.push(payload(`clergy${i + 1}`, 100 + i * 10, c, {}, "М")); });
@@ -484,7 +496,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
 
   function formDirty(): boolean {
     // Не только ИОФ: день, НП и звание без имени — тоже набранное (BirthForm).
-    return [groom, bride, groomRel, brideRel, ...witnesses]
+    return [groom, bride, groomRel, brideRel, ...witnesses, kin1, kin2]
       .some((p) => p.iof.trim().length > 0 || p.place.trim() !== "" || p.rank.trim() !== "") || day !== null;
   }
 
@@ -538,6 +550,8 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
         set({ ...p, note, side, uid: ++witnessUid });
       });
       setWitnessCount(by("witness6") ? 6 : by("witness5") ? 5 : 4);
+      setKin1(kinOf(by("kin_witness1")));
+      setKin2(kinOf(by("kin_witness2")));
       // У открытой записи свой причт; общий не трогается (clergy.tsx).
       clergyState.open([person(by("clergy1"), EMPTY_PERSON), person(by("clergy2"), EMPTY_PERSON),
                         person(by("clergy3"), EMPTY_PERSON)]);
@@ -585,6 +599,8 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
     witnessSetters.forEach((set, i) => set(newWitness(i)));
     witnessPlaceManual.current = [false, false, false, false, false, false];
     setWitnessCount(4);
+    setKin1({ ...NEW_KIN });
+    setKin2({ ...NEW_KIN });
     setDay(null);
     // «Счёт» в браках идёт подряд и растёт сам — курсор сразу в день
     // венчания (Роман 06.10.2026).
@@ -636,6 +652,8 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
   const [brideFolded, foldBride] = useFold("marriage_bride", "Невеста");
   const [brideRelFolded, foldBrideRel] = useFold("marriage_bride_relative", "Родственник невесты");
   const [witnessesFolded, foldWitnesses] = useFold("marriage_witnesses", "Поручители");
+  // Изначально свёрнуты (Роман 12.11.2026: «как „Свидетели“ в „Смертях“»).
+  const [kinFolded, foldKin] = useFold("marriage_kin", "Родственники поручителей", true);
 
   return (
     <div onKeyDown={hotkeys} ref={root} className="marriage formroot">
@@ -774,6 +792,27 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
             Добавить поручителя
           </button>
         )}
+      </div>
+
+      {kinFolded && (
+        <FoldLine block="marriage_kin" title="Родственники поручителей" summary={foldSummary([kin1, kin2])}
+                  onOpen={() => foldKin(false)} />
+      )}
+      <div className="cols" hidden={kinFolded} data-kin-blocks>
+        {([[kin1, setKin1, "Родственник поручителя или жениха № *"], [kin2, setKin2, "Родственник поручителя или невесты № **"]] as const)
+          .map(([k, set, title], i) => (
+            <PersonBlock key={i} title={title} person={k}
+                         onChange={(p) => set((s) => ({ ...s, ...p }))}
+                         gender={kinSex(k.kinship)} {...common}
+                         onPickPerson={pickInto(set)}
+                         titleAfter={i === 0 ? <FoldLink block="marriage_kin" onFold={() => foldKin(true)} /> : undefined}
+                         before={<>
+                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled
+                                    onChange={(kinOf) => set((s) => ({ ...s, kinOf }))} />
+                           <Suggest label="Родство" kind="kinship" value={k.kinship} browse skipFilled
+                                    onChange={(kinship) => set((s) => ({ ...s, kinship }))} />
+                         </>} />
+          ))}
       </div>
 
       <ClergyBlock

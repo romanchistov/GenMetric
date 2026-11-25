@@ -24,6 +24,8 @@ import type { FormProps } from "./formprops";
 import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
 import { FoldLine, FoldLink, foldSummary, useFold } from "./Fold";
+import Suggest from "./Suggest";
+import { kinExtra, kinFilled, kinOf, kinSex, NEW_KIN, type Kin } from "./kin";
 import { useFullIof } from "./FullIof";
 
 /**
@@ -99,6 +101,9 @@ type PersonPayload = {
   place: string | null;
   note: string | null;
   uncertain: string | null;
+  /** Родственник восприемника или родителя (задача 7). */
+  kinship?: string | null;
+  kin_of?: string | null;
 };
 
 export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYear, onYear }: FormProps) {
@@ -241,6 +246,9 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
   const [god3Raw, setGod3] = useState<Person>(EMPTY_PERSON);
   const [god4Raw, setGod4] = useState<Person>(EMPTY_PERSON);
   const [godCount, setGodCount] = useState(2);
+  // Родственник восприемника или родителя № * и № ** (задача 7).
+  const [kin1, setKin1] = useState<Kin>(NEW_KIN);
+  const [kin2, setKin2] = useState<Kin>(NEW_KIN);
   /** Восприемник набран с нуля (не выбран из подсказки) и без НП — НП отца
    *  (Роман 11.11.2026: «чаще всего восприемники местные»). При уходе из ИОФ,
    *  только в новой записи; поле НП в обходе клавишами остаётся — его видно
@@ -618,6 +626,8 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
   const [fatherFolded, foldFather] = useFold("birth_father", "Отец");
   const [motherFolded, foldMother] = useFold("birth_mother", "Мать");
   const [godsFolded, foldGods] = useFold("birth_godparents", "Восприемники");
+  // Изначально свёрнуты (Роман 12.11.2026: «как „Свидетели“ в „Смертях“»).
+  const [kinFolded, foldKin] = useFold("birth_kin", "Родственники восприемников и родителей", true);
 
   /** Для остальных персон выбор из базы заполняет населённый пункт и звание. */
   function pickInto(set: (fn: (p: Person) => Person) => void) {
@@ -691,7 +701,9 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     father = stale(father, fatherFolded);
     mother = stale(mother, motherFolded);
     [god1, god2, god3, god4] = [god1, god2, god3, god4].map((g) => stale(g, godsFolded));
+    let ks = [kin1, kin2].map((k) => (kinFolded ? { ...k, parsed: null } : k));
     try {
+      ks = await Promise.all(ks.map(withParsed)) as Kin[];
       [father, mother, god1, god2, god3, god4, clergy1, clergy2, clergy3] = await Promise.all(
         [father, mother, god1, god2, god3, god4, clergy1, clergy2, clergy3].map(withParsed));
       // Ctrl+Enter прямо из ИОФ восприемника: ухода из поля не было — НП отца
@@ -761,6 +773,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       ["восприемника", god2.iof.trim() ? god2.parsed : null],
       ["восприемника", god3.iof.trim() ? god3.parsed : null],
       ["восприемника", god4.iof.trim() ? god4.parsed : null],
+      ...ks.map((k) => ["родственника восприемника", k.iof.trim() ? k.parsed : null]),
       ["причта", clergy1.iof.trim() ? clergy1.parsed : null],
       ["причта", clergy2.iof.trim() ? clergy2.parsed : null],
       ["причта", clergy3.iof.trim() ? clergy3.parsed : null],
@@ -778,7 +791,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     // не писать человека «только званием» молча.
     const lost = ([["отца", father], ["матери", mother], ["восприемника", god1], ["восприемника", god2],
                    ["восприемника", god3], ["восприемника", god4], ["причта", clergy1], ["причта", clergy2],
-                   ["причта", clergy3]] as [string, Person][]).find(([, p]) => nameLost(p.iof, p.parsed));
+                   ["причта", clergy3], ...ks.map((k) => ["родственника восприемника", k])] as [string, Person][]).find(([, p]) => nameLost(p.iof, p.parsed));
     if (lost) {
       warn(`Имя ${lost[0]} «${lost[1].iof.trim()}» не разобрано — запись не сохранена`,
            "чтобы имя не пропало, программа остановилась; нажмите сохранение ещё раз");
@@ -810,6 +823,8 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     if (god2.iof.trim()) persons.push(payload("godparent2", 50, god2));
     if (god3.iof.trim()) persons.push(payload("godparent3", 60, god3));
     if (god4.iof.trim()) persons.push(payload("godparent4", 70, god4));
+    // Родственник восприемника или родителя (задача 7): 72, 74 — до причта.
+    ks.forEach((k, i) => { if (kinFilled(k)) persons.push({ ...payload(`kin_godparent${i + 1}`, 72 + 2 * i, k, kinSex(k.kinship)), ...kinExtra(k) }); });
     // Причт пишется в каждую запись: в Excel он стоит в той же строке,
     // и выгрузка в Familio ждёт его там же. Звание без имени (запись, где
     // имя причта потерялось, п. 9) пересохранение на правке не стирает:
@@ -983,16 +998,17 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     // Не только ИОФ: день, НП и звание без имени — тоже набранное. «Открыть»
     // запись из поиска посреди набора иначе молча стирало их (проверяющий
     // 09.10.2026). Вероисповедание не в счёт — оно стоит изначально.
-    return [child, father.iof, mother.iof, god1.iof, god2.iof, god3.iof, god4.iof]
+    return [child, father.iof, mother.iof, god1.iof, god2.iof, god3.iof, god4.iof, kin1.iof, kin2.iof]
       .some((v) => v.trim().length > 0)
       || birthDay !== null || riteDay !== null
-      || [father, mother, god1, god2, god3, god4].some((p) => p.place.trim() !== "" || p.rank.trim() !== "");
+      || [father, mother, god1, god2, god3, god4, kin1, kin2].some((p) => p.place.trim() !== "" || p.rank.trim() !== "");
   }
 
   type MentionOut = {
     role_code: string; sort_order: number; surname: string | null; first_name: string | null;
     patronymic: string | null; gender: string | null; rank: string | null;
     confession: string | null; place: string | null; note: string | null;
+    kinship?: string | null; kin_of?: string | null;
   };
   type EntryFull = {
   scan_file?: string | null;
@@ -1054,6 +1070,8 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
       setGod3(person(by("godparent3"), { ...EMPTY_PERSON }));
       setGod4(person(by("godparent4"), { ...EMPTY_PERSON }));
       setGodCount(by("godparent4") ? 4 : by("godparent3") ? 3 : 2);
+      setKin1(kinOf(by("kin_godparent1")));
+      setKin2(kinOf(by("kin_godparent2")));
       // У открытой записи свой причт; общий не трогается (clergy.tsx).
       clergyState.open([person(by("clergy1"), { ...EMPTY_PERSON }),
                         person(by("clergy2"), { ...EMPTY_PERSON }),
@@ -1133,6 +1151,8 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     setGod3({ ...EMPTY_PERSON });
     setGod4({ ...EMPTY_PERSON });
     setGodCount(2);
+    setKin1({ ...NEW_KIN });
+    setKin2({ ...NEW_KIN });
     setBirthDay(null);
     setRiteDay(null);
     countManual.current = false;
@@ -1391,6 +1411,28 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
             Добавить восприемника
           </button>
         )}
+      </div>
+
+      {kinFolded && (
+        <FoldLine block="birth_kin" title="Родственники восприемников и родителей" summary={foldSummary([kin1, kin2])}
+                  onOpen={() => foldKin(false)} />
+      )}
+      <div className="cols" hidden={kinFolded} data-kin-blocks>
+        {([[kin1, setKin1, "Родственник восприемника или родителя № *"], [kin2, setKin2, "Родственник восприемника или родителя № **"]] as const)
+          .map(([k, set, title], i) => (
+            <PersonBlock key={i} title={title} person={k}
+                         onChange={(p) => set((s) => ({ ...s, ...p }))}
+                         gender={kinSex(k.kinship)} rankKind="rank"
+                         placeDefaults={placeDefaults} onPlaceRenamed={renamePlace}
+                         onPickPerson={(hint) => set((p) => ({ ...p, place: hint.place ?? p.place, rank: hint.rank ?? p.rank }))}
+                         titleAfter={i === 0 ? <FoldLink block="birth_kin" onFold={() => foldKin(true)} /> : undefined}
+                         before={<>
+                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled
+                                    onChange={(kinOf) => set((s) => ({ ...s, kinOf }))} />
+                           <Suggest label="Родство" kind="kinship" value={k.kinship} browse skipFilled
+                                    onChange={(kinship) => set((s) => ({ ...s, kinship }))} />
+                         </>} />
+          ))}
       </div>
 
       {/* Церковнослужители. В Excel они стоят в той же строке записи —

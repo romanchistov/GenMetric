@@ -102,6 +102,8 @@ pub struct Mention {
     pub death_cause: Option<String>,
     pub marriage_order: Option<String>,
     pub kinship: Option<String>,
+    /// Чей родственник: «восприемника №2» (задача 7).
+    pub kin_of: Option<String>,
     /// У поручителя — сторона («по жениху»), у прочих — примечание.
     pub note: Option<String>,
     /// Год смерти этого человека (его досье), если он умер: «†» у детей в
@@ -169,6 +171,7 @@ struct Row {
     death_cause: Option<String>,
     marriage_order: Option<String>,
     kinship: Option<String>,
+    kin_of: Option<String>,
     note: Option<String>,
     section: i64,
     year: Option<i64>,
@@ -388,6 +391,7 @@ fn load(conn: &Connection) -> Result<Vec<Row>, String> {
                 death_cause: blank(r.get(17)?),
                 marriage_order: blank(r.get(18)?),
                 kinship: blank(r.get(19)?),
+                kin_of: blank(r.get(31)?),
                 note: blank(r.get(20)?),
                 section: r.get(21)?,
                 year: r.get(22)?,
@@ -464,7 +468,7 @@ impl Row {
             place: person.map_or_else(|| self.place.clone(), |p| p.place.clone()),
             rank: self.rank.clone(), gender: self.gender.clone(), age: self.age.clone(),
             death_cause: self.death_cause.clone(), marriage_order: self.marriage_order.clone(),
-            kinship: self.kinship.clone(), note: self.note.clone(),
+            kinship: self.kinship.clone(), kin_of: self.kin_of.clone(), note: self.note.clone(),
             died: person.and_then(|p| p.died),
         }
     }

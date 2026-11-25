@@ -65,6 +65,7 @@ fn kind_groups(kind: &str) -> Option<(&'static str, &'static str, &'static str)>
         "np_type" => ("Прочие перечни", "np_type", "тип пункта"),
         "confession" => ("Прочие перечни", "confession", "вероисповедание"),
         "kinship" => ("Прочие перечни", "kinship", "родство"),
+        "kin_of" => ("Прочие перечни", "kin_of", "чей родственник"),
         "marriage_order" => ("Прочие перечни", "marriage_order", "каким браком"),
         "death_cause" => ("Прочие перечни", "death_cause", "причина смерти"),
         _ => return None,
@@ -117,10 +118,15 @@ fn used(conn: &Connection) -> Result<Used, String> {
                rank: Option<String>, place: Option<String> }
     let mut by_entry: HashMap<i64, Vec<M>> = HashMap::new();
     {
-        let mut stmt = conn.prepare(
+        // «Чей родственник» (схема 14) — только если колонка есть: файл
+        // другого прихода, не открытый после обновления, ещё схемы 13.
+        let kin_of: bool = conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('person_mention') WHERE name = 'kin_of'", [], |r| r.get(0)).map_err(s)?;
+        let mut stmt = conn.prepare(&format!(
             "SELECT m.entry_id, m.role_code, m.first_name, m.patronymic, m.surname, m.rank, p.name,
-                    m.confession, m.kinship, m.marriage_order, m.death_cause
-               FROM person_mention m LEFT JOIN place p ON p.id = m.place_id").map_err(s)?;
+                    m.confession, m.kinship, m.marriage_order, m.death_cause, {}
+               FROM person_mention m LEFT JOIN place p ON p.id = m.place_id",
+            if kin_of { "m.kin_of" } else { "NULL" })).map_err(s)?;
         let mut rows = stmt.query([]).map_err(s)?;
         while let Some(r) = rows.next().map_err(s)? {
             let m = M { entry: r.get(0).map_err(s)?, role: r.get(1).map_err(s)?, first: r.get(2).map_err(s)?,
@@ -131,7 +137,7 @@ fn used(conn: &Connection) -> Result<Used, String> {
             u.add("surname", m.surname.as_deref());
             u.add("rank", m.rank.as_deref());
             u.add("place", m.place.as_deref());
-            for (k, g) in [(7, "confession"), (8, "kinship"), (9, "marriage_order"), (10, "death_cause")] {
+            for (k, g) in [(7, "confession"), (8, "kinship"), (9, "marriage_order"), (10, "death_cause"), (11, "kin_of")] {
                 let v: Option<String> = r.get(k).map_err(s)?;
                 u.add(g, v.as_deref());
             }

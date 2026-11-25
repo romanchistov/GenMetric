@@ -2403,7 +2403,9 @@ SELECT m.id, m.entry_id, m.role_code, m.sort_order,
        coalesce(e.rite_year, e.event_year) AS book_year,
        -- Девичья фамилия — поиск женщины и по ней; село «Дела» — НП причта
        -- при чтении (спека 2026-10-15-semya-celikom, п. 2.3 и 2.5).
-       m.maiden_surname, c.village AS case_village
+       m.maiden_surname, c.village AS case_village,
+       -- Чей родственник (схема 14, задача 7): «восприемника №2».
+       m.kin_of
   FROM person_mention m
   JOIN entry e ON e.id = m.entry_id
   LEFT JOIN mk_case c ON c.id = e.case_id

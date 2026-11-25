@@ -356,6 +356,18 @@ kinship,супруг,30
 kinship,супруга,40
 kinship,брат,50
 kinship,сестра,60
+kin_of,восприемника №1,10
+kin_of,восприемника №2,20
+kin_of,отца,30
+kin_of,матери,40
+kin_of,поручителя №1,50
+kin_of,поручителя №2,60
+kin_of,поручителя №3,70
+kin_of,поручителя №4,80
+kin_of,поручителя №5,90
+kin_of,поручителя №6,100
+kin_of,жениха,110
+kin_of,невесты,120
 surname_end_m,ев,10
 surname_end_m,ий,20
 surname_end_m,ин,30

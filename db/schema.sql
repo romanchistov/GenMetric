@@ -318,6 +318,7 @@ CREATE TABLE person_mention (
   death_cause       TEXT,
   marriage_order    TEXT,          -- каким браком
   kinship           TEXT,          -- родство: «отец» у родственника жениха/невесты (схема 6)
+  kin_of            TEXT,          -- чей родственник: «восприемника №2», «поручителя №1» (схема 14, задача 7)
 
   birth_year_from   INTEGER,       -- прогноз по возрастному коридору роли
   birth_year_to     INTEGER,

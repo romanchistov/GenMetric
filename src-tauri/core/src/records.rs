@@ -646,6 +646,10 @@ pub struct PersonInput {
     pub marriage_order: Option<String>,
     #[serde(default)]
     pub kinship: Option<String>,
+    /// Чей родственник: «восприемника №2», «поручителя №1» (схема 14,
+    /// задача 7) — у ролей kin_godparent*, kin_witness*.
+    #[serde(default)]
+    pub kin_of: Option<String>,
     // Смерти (27.09.2026): возраст как в книге и разобранный, причина смерти.
     #[serde(default)]
     pub age_months: Option<i64>,
@@ -1117,7 +1121,7 @@ fn save_entry_in_case(conn: &Connection, entry: &EntryInput, parish: &str, force
                 ":place_id": place_id, ":note": person.note, ":uncertain": person.uncertain,
                 ":birth_year_from": Option::<i64>::None, ":birth_year_to": Option::<i64>::None,
                 ":age_years": person.age_years, ":marriage_order": person.marriage_order,
-                ":kinship": person.kinship,
+                ":kinship": person.kinship, ":kin_of": person.kin_of,
                 ":age_months": person.age_months, ":age_weeks": person.age_weeks,
                 ":age_days": person.age_days, ":age_text": person.age_text,
                 ":death_cause": person.death_cause,
@@ -1127,6 +1131,9 @@ fn save_entry_in_case(conn: &Connection, entry: &EntryInput, parish: &str, force
             }
             if let Some(v) = person.kinship.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
                 remember(conn, "kinship", v, case_id, parish)?;
+            }
+            if let Some(v) = person.kin_of.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+                remember(conn, "kin_of", v, case_id, parish)?;
             }
             if let Some(v) = person.death_cause.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
                 remember(conn, "death_cause", v, case_id, parish)?;
@@ -1305,13 +1312,13 @@ fn forget_entry(conn: &Connection, entry_id: i64, parish: &str) -> Result<Vec<(&
     struct Old { role: String, first: Option<String>, patr: Option<String>, surname: Option<String>,
                  rank: Option<String>, place: Option<String>, case_id: i64, gender: Option<String>,
                  kinship: Option<String>, death_cause: Option<String>, marriage_order: Option<String>,
-                 confession: Option<String> }
+                 confession: Option<String>, kin_of: Option<String> }
     let old: Vec<Old> = {
         let mut stmt = conn.prepare(&statement("mentions_before_edit")?).map_err(|e| e.to_string())?;
         let rows = stmt.query_map(rusqlite::named_params! { ":entry_id": entry_id }, |r| Ok(Old {
             role: r.get(0)?, first: r.get(1)?, patr: r.get(2)?, surname: r.get(3)?, rank: r.get(4)?,
             place: r.get(5)?, case_id: r.get(6)?, gender: r.get(7)?, kinship: r.get(8)?, death_cause: r.get(9)?,
-            marriage_order: r.get(10)?, confession: r.get(11)?,
+            marriage_order: r.get(10)?, confession: r.get(11)?, kin_of: r.get(12)?,
         })).map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
     };
@@ -1331,6 +1338,7 @@ fn forget_entry(conn: &Connection, entry_id: i64, parish: &str) -> Result<Vec<(&
         let filled = |v: &Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
         if let Some(v) = filled(&o.marriage_order) { kinds.push(("marriage_order", v)); }
         if let Some(v) = filled(&o.kinship) { kinds.push(("kinship", v)); }
+        if let Some(v) = filled(&o.kin_of) { kinds.push(("kin_of", v)); }
         if let Some(v) = filled(&o.death_cause) { kinds.push(("death_cause", v)); }
         if let Some(v) = filled(&o.rank) {
             let kind = if o.role.starts_with("clergy") { "rank_clergy" }
@@ -1742,7 +1750,7 @@ mod tests {
             patronymic: None, surname_modern: None, first_name_modern: None, patronymic_modern: None,
             maiden_surname: None, gender: Some("М".into()), rank: Some("крестьянинъ".into()), confession: Some("правосл.".into()),
             place: Some("Тестово".into()), note: None, uncertain: None, age_years: None, marriage_order: None,
-            kinship: None, age_months: None, age_weeks: None, age_days: None, age_text: None,
+            kinship: None, kin_of: None, age_months: None, age_weeks: None, age_days: None, age_text: None,
             death_cause: Some("головая бол".into()),
         };
         let kin = PersonInput { role_code: "deceased_relative".into(), first_name: Some("Петр".into()), rank: None, death_cause: None,
@@ -1795,7 +1803,7 @@ mod tests {
             patronymic: Some(patr.into()), surname_modern: None, first_name_modern: None,
             patronymic_modern: None, maiden_surname: None, gender: Some(sex.into()),
             rank: None, confession: None, place: place.map(Into::into), note: None, uncertain: None, age_years: None,
-            marriage_order: None, kinship: None, age_months: None, age_weeks: None, age_days: None,
+            marriage_order: None, kinship: None, kin_of: None, age_months: None, age_weeks: None, age_days: None,
             age_text: None, death_cause: None,
         };
         let birth = |persons: Vec<PersonInput>| EntryInput {
@@ -1972,7 +1980,7 @@ mod tests {
             patronymic: Some("Иванова".into()), surname_modern: None, first_name_modern: None,
             patronymic_modern: Some("Ивановна".into()), maiden_surname: None, gender: Some("Ж".into()),
             rank: None, confession: None, place: None, note: None, uncertain: None, age_years: None,
-            marriage_order: None, kinship: None, age_months: None, age_weeks: None, age_days: None,
+            marriage_order: None, kinship: None, kin_of: None, age_months: None, age_weeks: None, age_days: None,
             age_text: None, death_cause: None,
         };
         let entry = EntryInput {

@@ -119,7 +119,7 @@ class Book:
                      patronymic=None, surname_modern=None, first_name_modern=None, patronymic_modern=None,
                      maiden_surname=None, gender=None, rank=None, confession=None, place_id=None, note=None,
                      uncertain=None, birth_year_from=None, birth_year_to=None, age_years=None,
-                     marriage_order=None, kinship=None, age_months=None, age_weeks=None, age_days=None,
+                     marriage_order=None, kinship=None, kin_of=None, age_months=None, age_weeks=None, age_days=None,
                      age_text=None, death_cause=None)
             place = p.pop("place", None)
             m.update(p)
@@ -641,6 +641,43 @@ def main() -> int:
                           1887: ["ГА Костромской области", "56", "31", "19"]}, str(by_year))
         check("в базе пользователя временных таблиц нет",
               db.execute("SELECT count(*) FROM sqlite_master WHERE name LIKE 'x_%'").fetchone()[0] == 0)
+
+        print("\n13. Родственник восприемника и поручителя (задача 7, 25.11.2026)")
+        bk = Book(db, sql)
+        bk.entry(1, [
+            dict(role_code="child", sort_order=10, first_name="Ия", first_name_modern="Ия", gender="Ж"),
+            dict(role_code="godparent2", sort_order=50, first_name="Мария", first_name_modern="Мария", gender="Ж"),
+            dict(role_code="kin_godparent1", sort_order=72, first_name="Пётр", patronymic="Ильин", surname="Сомов",
+                 first_name_modern="Пётр", patronymic_modern="Ильич", gender="М", rank="крестьянин",
+                 place="Кнышево", kinship="муж", kin_of="восприемника №2"),
+        ], no_female=7, event_day=1, event_month=3, event_year=1888, rite_day=2, rite_month=3, rite_year=1888)
+        bk.entry(2, [
+            dict(role_code="groom", sort_order=10, first_name="Лука", first_name_modern="Лука", gender="М"),
+            dict(role_code="bride", sort_order=20, first_name="Анна", first_name_modern="Анна", gender="Ж"),
+            dict(role_code="groom_relative", sort_order=30, first_name="Козьма", first_name_modern="Козьма",
+                 gender="М", kinship="брат"),
+            dict(role_code="kin_witness1", sort_order=96, first_name="Ефим", first_name_modern="Ефим",
+                 gender="М", rank="крестьянин", kinship="отец", kin_of="поручителя №1"),
+        ], no_male=9, event_day=5, event_month=3, event_year=1888)
+        db.executescript(sql["export_prepare"])
+        r = next(x for x in rows(db, sql, "familio_birth") if x[col("R")] == 1888)
+        check("Familio рождение: AV–BA — чей, родство, статус, Н.П., полное место, ФИО",
+              [v("AV"), v("AW"), v("AX"), v("AY"), v("BA")] == ["восприемника №2", "муж", "крестьянин", "Кнышево", "Сомов Пётр Ильич"]
+              and (v("AZ") or "").startswith("д. Кнышево"), str(r[col("AV"):col("BA") + 1]))
+        check("Familio рождение: BB–BG (№ **) пусты", all(v(c) is None for c in ("BB", "BC", "BG")))
+        r = next(x for x in rows(db, sql, "familio_marriage") if x[col("N")] == 1888)
+        check("Familio брак: BX–CC — родственник поручителя, не родственник жениха",
+              [v("BX"), v("BY"), v("BZ"), v("CC")] == ["поручителя №1", "отец", "крестьянин", "Ефим"], str(r[col("BX"):col("CC") + 1]))
+        check("Familio брак: родственник жениха, вытесненный из BX, — в «Комментарий», не потерян",
+              "родственник жениха (брат): Козьма" in (v("CR") or ""), str(v("CR")))
+        r = next(x for x in rows(db, sql, "excel_births") if x[col("K")] == "02.03.1888")
+        check("Excel рождение: родственник — в «Прим.» отца",
+              v("Q") == "Родственники: восприемника №2, муж — крестьянин Пётр Ильин Сомов (Кнышево)", str(v("Q")))
+        r = next(x for x in rows(db, sql, "excel_marriages") if x[col("J")] == "05.03.1888")
+        check("Excel брак: родственник поручителя — в «Прим.» жениха",
+              "Родственники: поручителя №1, отец — крестьянин Ефим" in (v("Q") or ""), str(v("Q")))
+        mk = rows(db, sql, "excel_mk")
+        check("Excel «МК»: строк без кода роли нет", all(x[col("C")] is not None for x in mk))
         # До выхода из временной папки: на Windows открытый файл не удаляется.
         db.close()
 

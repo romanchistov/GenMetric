@@ -798,7 +798,7 @@ mod tests {
             role_code: role.into(), sort_order: order, surname: opt(iof.2), first_name: opt(iof.0), patronymic: opt(iof.1),
             surname_modern: None, first_name_modern: opt(modern.0), patronymic_modern: opt(modern.1),
             maiden_surname: None, gender: opt(sex), rank: opt(rank), confession: None, place: opt(place), note: None,
-            uncertain: None, age_years: None, marriage_order: None, kinship: None, age_months: None, age_weeks: None,
+            uncertain: None, age_years: None, marriage_order: None, kinship: None, kin_of: None, age_months: None, age_weeks: None,
             age_days: None, age_text: None, death_cause: None,
         }
     }

@@ -36,7 +36,7 @@ REPO = DB_DIR.parent
 # каждую сборку, поэтому проверять надо переход с предыдущей, а не с самой
 # первой. Слепки схем лежат в db/fixtures.
 FROM_VERSION = 6
-TO_VERSION = 13
+TO_VERSION = 14
 
 ok_count = 0
 fail_count = 0
@@ -370,6 +370,10 @@ def main() -> int:
         check("память слияния приходов появилась (схема 13): таблица и колонка строки списка на сверку",
               one("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'merge_origin'") == 1
               and "origin_id" in [r[1] for r in db.execute("PRAGMA table_info(review_item)").fetchall()])
+        check("«чей родственник» и роли родственников восприемника и поручителя появились (схема 14, задача 7)",
+              "kin_of" in [r[1] for r in db.execute("PRAGMA table_info(person_mention)").fetchall()]
+              and one("SELECT count(*) FROM role WHERE code IN ('kin_godparent1', 'kin_godparent2', 'kin_witness1', 'kin_witness2')") == 4
+              and one("SELECT count(*) FROM lookup WHERE kind = 'kin_of'") == 12)
         check("у строки списка на сверку — оставленные правки помощника (17.11.2026, п. 157)",
               "kept" in [r[1] for r in db.execute("PRAGMA table_info(review_item)").fetchall()])
         check("метки прихода обновление не заводит и из поставки не берёт (её ставит программа при открытии)",

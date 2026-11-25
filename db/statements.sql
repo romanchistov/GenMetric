@@ -255,7 +255,7 @@ SELECT case_id, coalesce(rite_year, event_year), section FROM entry WHERE id = :
 -- С 17.11.2026 (п. 150) — и всё остальное, что сохранение кладёт в частоты:
 -- звание, НП, причина смерти, родство, «каким браком», вероисповедание.
 SELECT m.role_code, m.first_name, m.patronymic, m.surname, m.rank, p.name, e.case_id,
-       m.gender, m.kinship, m.death_cause, m.marriage_order, m.confession
+       m.gender, m.kinship, m.death_cause, m.marriage_order, m.confession, m.kin_of
   FROM person_mention m JOIN entry e ON e.id = m.entry_id LEFT JOIN place p ON p.id = m.place_id
  WHERE m.entry_id = :entry_id;
 
@@ -309,12 +309,12 @@ INSERT INTO person_mention
     (entry_id, role_code, sort_order, surname, first_name, patronymic,
      surname_modern, first_name_modern, patronymic_modern, maiden_surname,
      gender, rank, confession, place_id, note, uncertain,
-     birth_year_from, birth_year_to, age_years, marriage_order, kinship,
+     birth_year_from, birth_year_to, age_years, marriage_order, kinship, kin_of,
      age_months, age_weeks, age_days, age_text, death_cause)
 VALUES (:entry_id, :role_code, :sort_order, :surname, :first_name, :patronymic,
         :surname_modern, :first_name_modern, :patronymic_modern, :maiden_surname,
         :gender, :rank, :confession, :place_id, :note, :uncertain,
-        :birth_year_from, :birth_year_to, :age_years, :marriage_order, :kinship,
+        :birth_year_from, :birth_year_to, :age_years, :marriage_order, :kinship, :kin_of,
         :age_months, :age_weeks, :age_days, :age_text, :death_cause);
 
 -- @place_find
@@ -836,7 +836,7 @@ SELECT m.role_code, m.sort_order, m.surname, m.first_name, m.patronymic,
        m.gender, m.rank, m.confession,
        (SELECT p.name FROM place p WHERE p.id = m.place_id) AS place,
        m.note, m.uncertain, m.age_years, m.marriage_order, m.kinship,
-       m.age_text, m.death_cause, m.age_months
+       m.age_text, m.death_cause, m.age_months, m.kin_of
   FROM person_mention m
  WHERE m.entry_id = :entry_id
  ORDER BY m.sort_order;
@@ -1271,7 +1271,7 @@ SELECT m.entry_id, m.role_code, m.sort_order, m.surname, m.first_name, m.patrony
        m.gender, m.rank, m.confession,
        (SELECT p.name FROM place p WHERE p.id = m.place_id),
        m.note, m.uncertain, m.age_years, m.marriage_order, m.kinship,
-       m.age_months, m.age_weeks, m.age_days, m.age_text, m.death_cause
+       m.age_months, m.age_weeks, m.age_days, m.age_text, m.death_cause, m.kin_of
   FROM person_mention m
  -- Диапазоном, а не «:id IS NULL OR …»: с OR SQLite не берёт индекс, и
  -- окно сверки (запись за записью, 17.11.2026) перебирало бы все упоминания.
@@ -1629,7 +1629,7 @@ CREATE INDEX ix_x_part ON x_part (mention_id, idx);
 CREATE TEMP TABLE x_person0 AS
 SELECT m.id, m.entry_id, m.role_code, m.sort_order, m.gender,
        nullif(trim(m.rank), '') AS rank, nullif(trim(m.confession), '') AS confession,
-       nullif(trim(m.kinship), '') AS kinship,
+       nullif(trim(m.kinship), '') AS kinship, nullif(trim(m.kin_of), '') AS kin_of,
        m.age_years, m.age_months, m.age_weeks, m.age_days, nullif(trim(m.age_text), '') AS age_text,
        nullif(trim(m.death_cause), '') AS death_cause, nullif(trim(m.marriage_order), '') AS marriage_order,
        nullif(trim(m.maiden_surname), '') AS maiden_f,
@@ -1693,7 +1693,12 @@ SELECT q.*,
        replace(nullif(trim(CASE WHEN instr(replace(q.surname_b, '(?)', '‹?›'), '(') > 0 THEN substr(replace(q.surname_b, '(?)', '‹?›'), 1, instr(replace(q.surname_b, '(?)', '‹?›'), '(') - 1)
                         ELSE replace(q.surname_b, '(?)', '‹?›') END), ''), '‹?›', '(?)') AS surname_base,
        coalesce(q.maiden_f, replace(nullif(trim(replace(CASE WHEN instr(replace(q.surname_b, '(?)', '‹?›'), '(') > 0
-                                                     THEN substr(replace(q.surname_b, '(?)', '‹?›'), instr(replace(q.surname_b, '(?)', '‹?›'), '(') + 1) END, ')', '')), ''), '‹?›', '(?)')) AS maiden
+                                                     THEN substr(replace(q.surname_b, '(?)', '‹?›'), instr(replace(q.surname_b, '(?)', '‹?›'), '(') + 1) END, ')', '')), ''), '‹?›', '(?)')) AS maiden,
+       -- Человек одной строкой для примечания (задача 7): «крестьянин Иван
+       -- Петров Сидоров (Малово)».
+       nullif(trim(coalesce(q.rank || ' ', '') || trim(coalesce(coalesce(q.doc_first, q.first_b) || ' ', '')
+            || coalesce(coalesce(q.doc_patr, q.patr_b) || ' ', '') || coalesce(q.surname_b, ''))
+            || coalesce(' (' || q.place || ')', '')), '') AS line
   FROM x_person0 q;
 CREATE INDEX ix_x_person ON x_person (entry_id, role_code);
 
@@ -1853,7 +1858,16 @@ SELECT e.id AS entry_id,
             SELECT p.iof_doc || coalesce(' (' || nullif(trim(coalesce(p.rank, '') || coalesce(', ' || p.place, ''), ', '), '') || ')', '') AS txt
               FROM x_person p
              WHERE p.entry_id = e.id AND p.role_code LIKE 'death_witness%' AND p.iof_doc <> ''
-             ORDER BY p.sort_order, p.id)) AS witnesses
+             ORDER BY p.sort_order, p.id)) AS witnesses,
+       -- Родственники восприемника, родителя, поручителя (задача 7): у
+       -- индексатора колонок нет — в «Прим.» отца (рождения) и жениха (браки).
+       -- «Родственники: восприемника №2, муж — крестьянин Иван Петров (Малово)».
+       (SELECT 'Родственники: ' || group_concat(txt, '; ') FROM (
+            SELECT nullif(trim(coalesce(p.kin_of, '') || coalesce(', ' || p.kinship, ''), ', ') || ' — ', ' — ') || p.line AS txt
+              FROM x_person p
+             WHERE p.entry_id = e.id AND p.role_code IN ('kin_godparent1', 'kin_godparent2', 'kin_witness1', 'kin_witness2')
+               AND p.iof_b <> ''
+             ORDER BY p.sort_order, p.id)) AS kin
   FROM entry e;
 CREATE INDEX ix_x_text ON x_text (entry_id);
 
@@ -1883,7 +1897,8 @@ SELECT d.id AS entry_id, d.section,
        d.n AS c1, d.archive AS c2, d.fod AS c3, d.mk AS c4, d.book_year AS c5, 1 AS c6, d.page AS c7,
        d.no_male AS c8, d.no_female AS c9, d.event_date AS c10, d.rite_date AS c11,
        ch.iof_doc AS c12,
-       f.place AS c13, f.rank AS c14, nullif(f.iof_doc, '') AS c15, f.confession AS c16, f.note_clean AS c17, NULL AS c18,
+       f.place AS c13, f.rank AS c14, nullif(f.iof_doc, '') AS c15, f.confession AS c16,
+       nullif(trim(coalesce(f.note_clean, '') || coalesce('; ' || tk.kin, ''), '; '), '') AS c17, NULL AS c18,
        m.place AS c19, m.rank AS c20, nullif(m.iof_doc, '') AS c21, m.confession AS c22, m.note_clean AS c23, NULL AS c24,
        NULL AS c25, NULL AS c26, NULL AS c27, NULL AS c28, NULL AS c29, NULL AS c30,
        nullif(g1.iof_doc, '') AS c31, g1.place AS c32, g1.rank AS c33, g1.note_clean AS c34,
@@ -1905,6 +1920,7 @@ SELECT d.id AS entry_id, d.section,
   LEFT JOIN x_person k1 ON k1.entry_id = d.id AND k1.role_code = 'clergy1'
   LEFT JOIN x_person k2 ON k2.entry_id = d.id AND k2.role_code = 'clergy2'
   LEFT JOIN x_person k3 ON k3.entry_id = d.id AND k3.role_code = 'clergy3'
+  LEFT JOIN x_text tk ON tk.entry_id = d.id
  WHERE d.section = 1
 UNION ALL
 SELECT d.id, d.section,
@@ -1914,7 +1930,7 @@ SELECT d.id, d.section,
        g.place, g.rank, nullif(g.iof_doc, ''), g.confession,
        -- «Прим.» жениха у индексатора — «каким браком»; своё примечание — следом.
        -- Возраст — как в книге: «17,5» (Роман 02.11.2026), целые — числом.
-       nullif(trim(coalesce(g.marriage_order, '') || coalesce('; ' || g.note_clean, ''), '; '), ''), coalesce(g.age_text, g.age_years),
+       nullif(trim(coalesce(g.marriage_order, '') || coalesce('; ' || g.note_clean, '') || coalesce('; ' || tk.kin, ''), '; '), ''), coalesce(g.age_text, g.age_years),
        b.place, b.rank, nullif(b.iof_doc, ''), b.confession,
        nullif(trim(coalesce(b.marriage_order, '') || coalesce('; ' || b.note_clean, ''), '; '), ''), coalesce(b.age_text, b.age_years),
        gr.kinship, nullif(gr.iof_doc, ''), gr.rank, br.kinship, nullif(br.iof_doc, ''), br.rank,
@@ -1941,6 +1957,7 @@ SELECT d.id, d.section,
   LEFT JOIN x_person k1 ON k1.entry_id = d.id AND k1.role_code = 'clergy1'
   LEFT JOIN x_person k2 ON k2.entry_id = d.id AND k2.role_code = 'clergy2'
   LEFT JOIN x_person k3 ON k3.entry_id = d.id AND k3.role_code = 'clergy3'
+  LEFT JOIN x_text tk ON tk.entry_id = d.id
  WHERE d.section = 2
 UNION ALL
 SELECT d.id, d.section,
@@ -2006,11 +2023,15 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
        g2.rank, g2.place, g2.place_full, nullif(trim(coalesce(g2.surname_b || ' ', '') || coalesce(g2.first_m || ' ', '') || coalesce(g2.patr_m, '')), ''),
        g3.rank, g3.place, g3.place_full, nullif(trim(coalesce(g3.surname_b || ' ', '') || coalesce(g3.first_m || ' ', '') || coalesce(g3.patr_m, '')), ''),
        g4.rank, g4.place, g4.place_full, nullif(trim(coalesce(g4.surname_b || ' ', '') || coalesce(g4.first_m || ' ', '') || coalesce(g4.patr_m, '')), ''),
-       NULL, NULL, NULL, NULL, NULL, NULL,
-       NULL, NULL, NULL, NULL, NULL, NULL,
+       -- Родственник восприемника или родителя № * и № ** (задача 7): чей,
+       -- родство, статус, Н.П., полное место, ФИО.
+       r1.kin_of, r1.kinship, r1.rank, r1.place, r1.place_full, nullif(trim(coalesce(r1.surname_b || ' ', '') || coalesce(r1.first_m || ' ', '') || coalesce(r1.patr_m, '')), ''),
+       r2.kin_of, r2.kinship, r2.rank, r2.place, r2.place_full, nullif(trim(coalesce(r2.surname_b || ' ', '') || coalesce(r2.first_m || ' ', '') || coalesce(r2.patr_m, '')), ''),
        k1.rank, k1.fio, NULL, NULL, k2.rank, k2.fio, k3.rank, k3.fio,
        t.notes, t.author
   FROM x_entry e
+  LEFT JOIN x_person r1 ON r1.entry_id = e.id AND r1.role_code = 'kin_godparent1' AND r1.iof_b <> ''
+  LEFT JOIN x_person r2 ON r2.entry_id = e.id AND r2.role_code = 'kin_godparent2' AND r2.iof_b <> ''
   LEFT JOIN x_person ch ON ch.entry_id = e.id AND ch.role_code = 'child'
   LEFT JOIN x_person f ON f.entry_id = e.id AND f.role_code = 'father'
   LEFT JOIN x_person m ON m.entry_id = e.id AND m.role_code = 'mother'
@@ -2058,12 +2079,28 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
        w4.rank, w4.place, w4.place_full, nullif(trim(coalesce(w4.surname_b || ' ', '') || coalesce(w4.first_m || ' ', '') || coalesce(w4.patr_m, '')), ''),
        w5.rank, w5.place, w5.place_full, nullif(trim(coalesce(w5.surname_b || ' ', '') || coalesce(w5.first_m || ' ', '') || coalesce(w5.patr_m, '')), ''),
        w6.rank, w6.place, w6.place_full, nullif(trim(coalesce(w6.surname_b || ' ', '') || coalesce(w6.first_m || ' ', '') || coalesce(w6.patr_m, '')), ''),
-       CASE WHEN gx.id IS NOT NULL THEN 'жениха' END, gx.kinship, gx.rank, gx.place, gx.place_full,
-       nullif(trim(coalesce(gx.surname_b || ' ', '') || coalesce(gx.first_m || ' ', '') || coalesce(gx.patr_m, '')), ''),
-       CASE WHEN bx.id IS NOT NULL THEN 'невесты' END, bx.kinship, bx.rank, bx.place, bx.place_full,
-       nullif(trim(coalesce(bx.surname_b || ' ', '') || coalesce(bx.first_m || ' ', '') || coalesce(bx.patr_m, '')), ''),
+       -- Блок «Родственник поручителя или жениха № *» (задача 7): свой блок
+       -- формы (kin_witness1), а без него — родственник жениха не «отец», как
+       -- до 25.11.2026. Заняты оба — родственник жениха уходит в «Комментарий».
+       CASE WHEN r1.id IS NOT NULL THEN r1.kin_of WHEN gx.id IS NOT NULL THEN 'жениха' END,
+       CASE WHEN r1.id IS NOT NULL THEN r1.kinship ELSE gx.kinship END,
+       CASE WHEN r1.id IS NOT NULL THEN r1.rank ELSE gx.rank END,
+       CASE WHEN r1.id IS NOT NULL THEN r1.place ELSE gx.place END,
+       CASE WHEN r1.id IS NOT NULL THEN r1.place_full ELSE gx.place_full END,
+       CASE WHEN r1.id IS NOT NULL THEN nullif(trim(coalesce(r1.surname_b || ' ', '') || coalesce(r1.first_m || ' ', '') || coalesce(r1.patr_m, '')), '') ELSE nullif(trim(coalesce(gx.surname_b || ' ', '') || coalesce(gx.first_m || ' ', '') || coalesce(gx.patr_m, '')), '') END,
+       CASE WHEN r2.id IS NOT NULL THEN r2.kin_of WHEN bx.id IS NOT NULL THEN 'невесты' END,
+       CASE WHEN r2.id IS NOT NULL THEN r2.kinship ELSE bx.kinship END,
+       CASE WHEN r2.id IS NOT NULL THEN r2.rank ELSE bx.rank END,
+       CASE WHEN r2.id IS NOT NULL THEN r2.place ELSE bx.place END,
+       CASE WHEN r2.id IS NOT NULL THEN r2.place_full ELSE bx.place_full END,
+       CASE WHEN r2.id IS NOT NULL THEN nullif(trim(coalesce(r2.surname_b || ' ', '') || coalesce(r2.first_m || ' ', '') || coalesce(r2.patr_m, '')), '') ELSE nullif(trim(coalesce(bx.surname_b || ' ', '') || coalesce(bx.first_m || ' ', '') || coalesce(bx.patr_m, '')), '') END,
        k1.rank, k1.fio, NULL, NULL, k2.rank, k2.fio, k3.rank, k3.fio,
-       t.notes, t.author
+       nullif(trim(coalesce(t.notes, '')
+            || CASE WHEN r1.id IS NOT NULL AND gx.id IS NOT NULL
+                    THEN '; родственник жениха' || coalesce(' (' || gx.kinship || ')', '') || ': ' || gx.line ELSE '' END
+            || CASE WHEN r2.id IS NOT NULL AND bx.id IS NOT NULL
+                    THEN '; родственник невесты' || coalesce(' (' || bx.kinship || ')', '') || ': ' || bx.line ELSE '' END, '; '), ''),
+       t.author
   FROM x_entry e
   LEFT JOIN x_person g ON g.entry_id = e.id AND g.role_code = 'groom'
   LEFT JOIN x_person b ON b.entry_id = e.id AND b.role_code = 'bride'
@@ -2075,6 +2112,8 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
         AND coalesce(bf.kinship, 'отец') = 'отец' AND bf.iof_b <> ''
   LEFT JOIN x_person bx ON bx.entry_id = e.id AND bx.role_code IN ('bride_relative', 'bride_parent')
         AND coalesce(bx.kinship, 'отец') <> 'отец' AND bx.iof_b <> ''
+  LEFT JOIN x_person r1 ON r1.entry_id = e.id AND r1.role_code = 'kin_witness1' AND r1.iof_b <> ''
+  LEFT JOIN x_person r2 ON r2.entry_id = e.id AND r2.role_code = 'kin_witness2' AND r2.iof_b <> ''
   LEFT JOIN x_witness xw1 ON xw1.entry_id = e.id AND xw1.block = 1 LEFT JOIN x_person w1 ON w1.id = xw1.id
   LEFT JOIN x_witness xw2 ON xw2.entry_id = e.id AND xw2.block = 2 LEFT JOIN x_person w2 ON w2.id = xw2.id
   LEFT JOIN x_witness xw3 ON xw3.entry_id = e.id AND xw3.block = 3 LEFT JOIN x_person w3 ON w3.id = xw3.id
@@ -2264,6 +2303,9 @@ WITH p AS (
        -- Свидетели смерти (06.11.2026) — только в «Прим.» умершего: кода
        -- роли у индексатора для них нет (ревьюер 06.11.2026).
        AND x.role_code NOT LIKE 'death_witness%'
+       -- Родственники восприемника и поручителя (задача 7) — тоже только в
+       -- «Прим.» (отца, жениха): кода у индексатора нет.
+       AND x.role_code NOT IN ('kin_godparent1', 'kin_godparent2', 'kin_witness1', 'kin_witness2')
        AND (x.iof_b <> '' OR x.role_code = 'deceased')
 ),
 q AS (

@@ -164,6 +164,7 @@ fn read_entries(conn: &Connection, id: Option<i64>) -> Result<Vec<(i64, i64, Ent
                 age_years: r.get(16).map_err(s)?, marriage_order: r.get(17).map_err(s)?, kinship: r.get(18).map_err(s)?,
                 age_months: r.get(19).map_err(s)?, age_weeks: r.get(20).map_err(s)?, age_days: r.get(21).map_err(s)?,
                 age_text: r.get(22).map_err(s)?, death_cause: r.get(23).map_err(s)?,
+                kin_of: r.get(24).map_err(s)?,
             });
         }
     }
@@ -224,6 +225,12 @@ pub fn fingerprint(e: &EntryInput) -> String {
             number(p.age_months), number(p.age_weeks), number(p.age_days),
             text(&p.age_text), text(&p.death_cause),
         ]);
+        // «Чей родственник» (схема 14, задача 7) — только когда есть: иначе
+        // отпечатки всех прежде слитых записей стали бы другими, и они
+        // выглядели бы «поправленными».
+        if let Some(v) = p.kin_of.as_deref().filter(|v| !v.trim().is_empty()) {
+            parts.push(format!("чей:{v}"));
+        }
     }
     // FNV-1a, 64 бита: одинаков на любой машине и в любой сборке (хеш
     // стандартной библиотеки этого не обещает).
@@ -311,7 +318,7 @@ fn blank_person() -> PersonInput {
         role_code: String::new(), sort_order: 0, surname: None, first_name: None, patronymic: None,
         surname_modern: None, first_name_modern: None, patronymic_modern: None, maiden_surname: None,
         gender: None, rank: None, confession: None, place: None, note: None, uncertain: None,
-        age_years: None, marriage_order: None, kinship: None, age_months: None, age_weeks: None,
+        age_years: None, marriage_order: None, kinship: None, kin_of: None, age_months: None, age_weeks: None,
         age_days: None, age_text: None, death_cause: None,
     }
 }
@@ -360,9 +367,9 @@ impl Diff {
 // написание, пол, отметка сомнения; возраст — с месяцами, неделями, днями.
 const ENTRY_FIELDS: [&str; 7] = ["страница", "счёт м.", "счёт ж.", "дата события", "дата обряда", "примечание записи",
                                  "сомнение в записи"];
-const PERSON_FIELDS: [&str; 13] = ["ИОФ", "НП", "звание", "возраст", "причина смерти", "родство", "каким браком",
+const PERSON_FIELDS: [&str; 14] = ["ИОФ", "НП", "звание", "возраст", "причина смерти", "родство", "каким браком",
                                    "вероисповедание", "девичья фамилия", "примечание", "современное написание", "пол",
-                                   "сомнение"];
+                                   "сомнение", "чей родственник"];
 
 /// Сравнение для отличий: как набрано, без лишних пробелов (и в одной
 /// юникод-форме). Регистр и «ё» — отличие: «владимир» → «Владимир» у Олега
@@ -417,6 +424,7 @@ fn person_value(p: &PersonInput, field: &str) -> String {
         "сомнение" => uncertain_text(&p.uncertain),
         "причина смерти" => text(&p.death_cause),
         "родство" => text(&p.kinship),
+        "чей родственник" => text(&p.kin_of),
         "каким браком" => text(&p.marriage_order),
         "вероисповедание" => text(&p.confession),
         "девичья фамилия" => text(&p.maiden_surname),
@@ -461,6 +469,7 @@ fn copy_person_field(to: &mut PersonInput, from: &PersonInput, field: &str) {
         }
         "причина смерти" => to.death_cause = from.death_cause.clone(),
         "родство" => to.kinship = from.kinship.clone(),
+        "чей родственник" => to.kin_of = from.kin_of.clone(),
         "каким браком" => to.marriage_order = from.marriage_order.clone(),
         "вероисповедание" => to.confession = from.confession.clone(),
         "девичья фамилия" => to.maiden_surname = from.maiden_surname.clone(),

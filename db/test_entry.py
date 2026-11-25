@@ -164,7 +164,7 @@ def main() -> int:
                      first_name_modern=None, patronymic_modern=None, maiden_surname=None,
                      gender=None, rank=None, confession=None, place_id=None, note=None,
                      uncertain=None, birth_year_from=None, birth_year_to=None,
-                     age_years=None, marriage_order=None, kinship=None,
+                     age_years=None, marriage_order=None, kinship=None, kin_of=None,
                      age_months=None, age_weeks=None, age_days=None, age_text=None, death_cause=None)
         for p in persons:
             db.execute(sql["mention_insert"], {**blank, **p, "entry_id": entry_id})

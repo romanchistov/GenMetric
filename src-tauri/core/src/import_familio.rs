@@ -584,6 +584,7 @@ impl Familio<'_> {
             age_years: None,
             marriage_order: None,
             kinship: None,
+            kin_of: None,
             age_months: None,
             age_weeks: None,
             age_days: None,
@@ -821,7 +822,6 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
     // Одинаковые записи в разных файлах: обе сохраняются и обе — на сверку.
     let mut twins: HashMap<String, (usize, String, String, u32, i64)> = HashMap::new();
     let mut twins_flagged: std::collections::HashSet<i64> = std::collections::HashSet::new();
-    let mut kin_of_godparents = 0;
 
     for (fi, (file, book)) in books.iter().enumerate() {
         for (i, slot) in book.sheets.iter().enumerate() {
@@ -906,19 +906,24 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
                                 persons.push(p);
                             }
                         }
-                        // Родственник восприемника или родителя: в форме для
-                        // него места нет — в примечание записи, ничего не теряя.
+                        // Родственник восприемника или родителя — свои блоки
+                        // формы «№ *» и «№ **» (задача 7, 25.11.2026): «чей»,
+                        // родство, звание, Н.П., ФИО. Без ФИО — звание и место
+                        // уходят в примечание, как у других ролей (`person`).
                         for k in 0..2u32 {
                             let c = 48 + 6 * k;
-                            let parts: Vec<String> = [g(c + 2), g(c + 5), g(c + 3).map(|p| format!("({p})"))]
-                                .into_iter().flatten().collect();
-                            if parts.is_empty() {
-                                continue;
+                            let role = ["kin_godparent1", "kin_godparent2"][k as usize];
+                            let names = match g(c + 5) {
+                                Some(fio) => fam.split_fio(&fio, false)?,
+                                None => Names::default(),
+                            };
+                            let kinship = g(c + 1);
+                            let gender = kinship.as_deref().and_then(kin_gender);
+                            if let Some(mut p) = fam.person(role, 72 + 2 * k as i64, names, gender, g(c + 2), g(c + 3), None)? {
+                                p.kinship = kinship;
+                                p.kin_of = g(c);
+                                persons.push(p);
                             }
-                            let whose = [g(c), g(c + 1)].into_iter().flatten().collect::<Vec<_>>().join(", ");
-                            notes.push(format!("родственник{}: {}", if whose.is_empty() { String::new() } else { format!(" ({whose})") },
-                                               parts.join(" ")));
-                            kin_of_godparents += 1;
                         }
                     }
                     2 => {
@@ -986,7 +991,10 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
                             }
                         }
                         // Родственник жениха или невесты — в свою роль с
-                        // родством; родственник поручителя — в примечание.
+                        // родством (блок формы «Родственник жениха»); родственник
+                        // поручителя, второй родственник стороны — в блоки
+                        // «Родственник поручителя или жениха № *» / «… невесты
+                        // № **» (задача 7, 25.11.2026) с «кого?» в «чей».
                         for k in 0..2u32 {
                             let c = 76 + 6 * k;
                             let Some(fio) = g(c + 5) else { continue };
@@ -1007,10 +1015,15 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
                                     }
                                 }
                                 None => {
-                                    let whose = [g(c), g(c + 1)].into_iter().flatten().collect::<Vec<_>>().join(", ");
-                                    let parts: Vec<String> = [g(c + 2), Some(fio), g(c + 3).map(|p| format!("({p})"))]
-                                        .into_iter().flatten().collect();
-                                    notes.push(format!("родственник ({whose}): {}", parts.join(" ")));
+                                    let kinship = g(c + 1);
+                                    let names = fam.split_fio(&fio, false)?;
+                                    let gender = kinship.as_deref().and_then(kin_gender);
+                                    let role = ["kin_witness1", "kin_witness2"][k as usize];
+                                    if let Some(mut p) = fam.person(role, 96 + 2 * k as i64, names, gender, g(c + 2), g(c + 3), None)? {
+                                        p.kinship = kinship;
+                                        p.kin_of = g(c);
+                                        persons.push(p);
+                                    }
                                 }
                             }
                         }
@@ -1034,7 +1047,7 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
                                     patronymic: None, surname_modern: None, first_name_modern: None,
                                     patronymic_modern: None, maiden_surname: None, gender: dead_sex.clone(), rank: g(21),
                                     confession: None, place: g(19), note: None, uncertain: None, age_years: None,
-                                    marriage_order: None, kinship: None, age_months: None, age_weeks: None,
+                                    marriage_order: None, kinship: None, kin_of: None, age_months: None, age_weeks: None,
                                     age_days: None, age_text: None, death_cause: None,
                                 },
                             };
@@ -1270,10 +1283,6 @@ pub fn import_into(conn: &Connection, files: &[(String, Vec<u8>)]) -> Result<Imp
     if !bare.is_empty() {
         report.notes.push(format!("пунктов без карточки: {} — на сверке ({})", bare.len(),
                                   bare.iter().take(10).map(|b| b.0.as_str()).collect::<Vec<_>>().join(", ")));
-    }
-    if kin_of_godparents > 0 {
-        report.notes.push(format!(
-            "родственников восприемников и родителей: {kin_of_godparents} — в форме для них места нет, они в примечании записи"));
     }
 
     report.persons = count("SELECT count(*) FROM person_mention WHERE role_code NOT LIKE 'clergy%'")?;
@@ -1634,6 +1643,49 @@ mod tests {
         assert_eq!(age("bride"), "19|3|19,25");
         let note: String = conn.query_row("SELECT coalesce(group_concat(note, ' '), '') FROM entry", [], |r| r.get(0)).unwrap();
         assert!(!note.contains("возраст"), "в примечание возраст не уходит: {note}");
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Задача 7 (25.11.2026): родственник восприемника (48–53) и поручителя
+    /// (76–81) — в свои роли с «чей», не в примечание; выгрузка кладёт их в
+    /// те же колонки.
+    #[test]
+    fn kin_of_godparents_and_witnesses() {
+        let Some(seed) = seed() else { return };
+        let mut b = birth("1890", "Нил", "Иван", "Кузнецов");
+        b.1.extend([(48, "восприемника №2"), (49, "муж"), (50, "крестьянин"), (51, "Заречье"), (53, "Сомов Пётр Ильич")]);
+        let m = ("БРАК", vec![
+            (1, "1"), (2, "ГА"), (3, "56"), (5, "7"), (7, "Тестово"), (9, "Никольская"), (11, "1"),
+            (12, "5"), (13, "1"), (14, "1890"), (18, "Кузнецов"), (20, "Иван"), (21, "Петрович"),
+            (37, "Сидорова"), (38, "Мария"), (39, "Ивановна"),
+            (76, "поручителя №1"), (77, "брат"), (78, "крестьянин"), (81, "Ефимов Козьма"),
+            (82, "невесты"), (83, "дядя"), (87, "Сидоров Лука")]);
+        let bytes = file(&[b, m]);
+        let (path, conn) = fresh("kin", &seed);
+        import(&conn, &[("k.xlsx".into(), bytes)]);
+        let who = |role: &str| -> String { conn.query_row(
+            "SELECT coalesce(kin_of, '-') || '|' || coalesce(kinship, '-') || '|' || coalesce(rank, '-') || '|' \
+                    || coalesce(first_name, '') || ' ' || coalesce(surname, '') || '|' || coalesce(gender, '-') \
+               FROM person_mention WHERE role_code = ?1", [role], |r| r.get(0)).unwrap_or_else(|_| "нет".into()) };
+        assert_eq!(who("kin_godparent1"), "восприемника №2|муж|крестьянин|Пётр Сомов|М");
+        assert_eq!(who("kin_witness1"), "поручителя №1|брат|крестьянин|Козьма Ефимов|М");
+        // «невесты» и роль невесты свободна — как до 25.11.2026, в её блок.
+        assert_eq!(who("bride_relative"), "-|дядя|-|Лука Сидоров|М");
+        let note: String = conn.query_row("SELECT coalesce(group_concat(note, ' '), '') FROM entry", [], |r| r.get(0)).unwrap();
+        assert!(!note.contains("родственник"), "в примечание родственник не уходит: {note}");
+
+        let (out, _) = crate::export::familio_bytes(&conn, &[], &about()).unwrap();
+        let birth = read_sheet(&out, "РОЖДЕНИЕ").unwrap();
+        let row = birth.values().find(|r| r.get(&19).is_some_and(|v| v == "Нил")).unwrap();
+        assert_eq!([48, 49, 50, 51].map(|c| row.get(&c).cloned().unwrap_or_default()),
+                   ["восприемника №2", "муж", "крестьянин", "Заречье"].map(String::from));
+        assert!(row.get(&53).is_some_and(|v| v.contains("Сомов") && v.contains("Петр")), "{:?}", row.get(&53));
+        let brak = read_sheet(&out, "БРАК").unwrap();
+        let row = brak.values().find(|r| r.get(&20).is_some_and(|v| v == "Иван")).unwrap();
+        assert_eq!([76, 77, 78].map(|c| row.get(&c).cloned().unwrap_or_default()),
+                   ["поручителя №1", "брат", "крестьянин"].map(String::from));
+        assert_eq!([82, 83].map(|c| row.get(&c).cloned().unwrap_or_default()), ["невесты", "дядя"].map(String::from));
         drop(conn);
         let _ = std::fs::remove_file(path);
     }

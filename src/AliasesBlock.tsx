@@ -50,7 +50,14 @@ export default function AliasesBlock() {
     }
   }
 
+  /** «Удалить» — со второго нажатия: удаление действует во всех приходах
+   *  (ревьюер 26.11.2026: промах мышью терял решение без отмены). */
+  const [sure, setSure] = useState<string | null>(null);
+
   async function remove(a: Alias) {
+    const key = `${a.kind}|${a.form_norm}`;
+    if (sure !== key) { setSure(key); return; }
+    setSure(null);
     try {
       await invoke("alias_remove", { kind: a.kind, formNorm: a.form_norm });
       setNote(`«${a.form}» забыто: при следующем наборе программа снова спросит, ${a.kind === "patr" ? "какому отчеству" : "какому имени"} оно соответствует.`);
@@ -92,9 +99,13 @@ export default function AliasesBlock() {
                     <button type="button" className="linkish" data-alias-change onClick={() => { setNote(null); setEditing(a); }}>
                       Изменить
                     </button>{" "}
-                    <button type="button" className="linkish" data-alias-remove onClick={() => void remove(a)}>
-                      Удалить
+                    <button type="button" className={sure === `${a.kind}|${a.form_norm}` ? "danger" : "linkish"} data-alias-remove
+                            onClick={() => void remove(a)}>
+                      {sure === `${a.kind}|${a.form_norm}` ? "Да, удалить во всех приходах" : "Удалить"}
                     </button>
+                    {sure === `${a.kind}|${a.form_norm}` && (
+                      <button type="button" className="linkish" onClick={() => setSure(null)}>Отмена</button>
+                    )}
                   </td>
                 </tr>
               ))}

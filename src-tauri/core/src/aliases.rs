@@ -36,16 +36,19 @@ pub fn list(conn: &Connection) -> Result<Vec<Alias>, String> {
     rows.collect::<Result<Vec<_>, _>>().map_err(s)
 }
 
-/// Удалить соответствие; с подключённым общим файлом — и отметить удаление
-/// там. Сверку зовёт вызывающий (команда окна — `with_conn_shared`).
+/// Удалить соответствие и отметить удаление в общем файле; без общего файла
+/// — отказ. Сверку зовёт вызывающий (команда окна — `with_conn_shared`).
 pub fn remove(conn: &Connection, kind: &str, form_norm: &str) -> Result<(), String> {
     if kind != "name" && kind != "patr" {
         return Err(format!("Неизвестный вид соответствия: {kind}"));
     }
-    let args = rusqlite::named_params! { ":kind": kind, ":form_norm": form_norm };
-    if crate::parish::has_common(conn) {
-        conn.execute(&statement("alias_removed_mark")?, args).map_err(s)?;
+    // Без общего файла отметку некуда положить, и сверка потом вернула бы
+    // соответствие — честнее отказать (ревьюер 26.11.2026).
+    if !crate::parish::has_common(conn) {
+        return Err("Общий файл приходов сейчас недоступен — удалить соответствие можно, когда приходы снова откроются.".into());
     }
+    let args = rusqlite::named_params! { ":kind": kind, ":form_norm": form_norm };
+    conn.execute(&statement("alias_removed_mark")?, args).map_err(s)?;
     conn.execute(&statement("alias_remove")?, args).map_err(s)?;
     Ok(())
 }
@@ -128,6 +131,8 @@ mod tests {
         assert_eq!(target(&b.conn, "name", "Пилагия"), Some(Some("Пелагия".into())), "и в Б");
 
         assert!(remove(&b.conn, "fam", "x").is_err(), "неизвестный вид — отказ");
+        let alone = Connection::open_in_memory().unwrap();
+        assert!(remove(&alone, "name", "x").unwrap_err().contains("недоступен"), "без общего файла — отказ, а не тихое удаление");
         drop(b);
         let _ = std::fs::remove_dir_all(&dir);
     }

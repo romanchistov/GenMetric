@@ -1343,3 +1343,7 @@ details.devinfo[open] > summary { margin-bottom: 0.6em; }
 
 /* «Изменить» и «Удалить» в «Запомненных написаниях» — не вплотную (задача 15). */
 [data-aliases] td button + button { margin-left: 0.8em; }
+
+/* Полоса закреплена вверху окна (п. 32): поле, к которому окно прокручивает
+   Tab, не должно оказаться под ней (ревьюер 26.11.2026). */
+html:has(.errorbar) { scroll-padding-top: 5em; }

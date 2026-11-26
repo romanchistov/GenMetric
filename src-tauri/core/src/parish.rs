@@ -47,7 +47,8 @@ const NAME_MAX: usize = 60;
 // окна, общий для всех приходов. Папка сканов (scan_dir_<год>) — у прихода.
 // ui_scan_detached — скан отдельным окном (27.10.2026).
 pub const COMMON_SETTINGS: &[&str] = &["ui_font_scale", "ui_one_column", "clergy_open", "familio_about",
-                                       "ui_scan_on", "ui_scan_form_width", "ui_scan_keep_place", "ui_scan_detached"];
+                                       "ui_scan_on", "ui_scan_form_width", "ui_scan_keep_place", "ui_scan_detached",
+                                       "ui_entry_order"];
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ParishRow {

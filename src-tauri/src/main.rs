@@ -753,6 +753,10 @@ struct EntryBrief {
     rite_day: Option<i64>,
     /// Пол умершего («М»/«Ж») — цвет строки в «Набрано» (задача 4, 19.11.2026).
     deceased_gender: Option<String>,
+    /// Место записи в порядке книги, с нуля (задача 19): по нему «Набрано»
+    /// показывает «по книге». Сам список — по вводу: формы берут из него
+    /// последнюю набранную запись.
+    book: usize,
 }
 
 /// Дело года (year) или текущее — дело последней записи. Дело — на год
@@ -2106,7 +2110,7 @@ fn entry_list(app: State<App>, section: i64, year: Option<i64>, last: Option<boo
                     clergy_noname: r.get::<_, i64>(10)? != 0,
                     groom: r.get(11)?, bride: r.get(12)?, deceased: r.get(13)?,
                     rite_year: r.get(14)?, scan_file: r.get(15)?, rite_day: r.get(16)?,
-                    deceased_gender: r.get(17)?,
+                    deceased_gender: r.get(17)?, book: 0,
                 }, r.get::<_, Option<String>>(17)?, r.get::<_, Option<String>>(18)?))
             })
             .map_err(|e| e.to_string())?;
@@ -2145,6 +2149,16 @@ fn entry_list(app: State<App>, section: i64, year: Option<i64>, last: Option<boo
                 }
             }
             out.push(brief);
+        }
+        // Порядок книги — по дате обряда, странице, номеру (задача 19).
+        let rows: Vec<genmetric_core::book_order::BookRow> = out.iter().map(|b| genmetric_core::book_order::BookRow {
+            id: b.id, page: b.page.clone(), no_male: b.no_male, no_female: b.no_female,
+            date: genmetric_core::book_order::book_date((b.event_day, b.event_month, b.event_year), (b.rite_day, b.rite_month, b.rite_year)),
+        }).collect();
+        let at: std::collections::HashMap<i64, usize> = genmetric_core::book_order::book_order(&rows)
+            .into_iter().enumerate().map(|(i, id)| (id, i)).collect();
+        for b in &mut out {
+            b.book = at.get(&b.id).copied().unwrap_or(0);
         }
         Ok(out)
     })

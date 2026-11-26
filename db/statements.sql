@@ -1566,6 +1566,10 @@ DROP TABLE IF EXISTS temp.x_place;
 DROP TABLE IF EXISTS temp.x_place0;
 DROP TABLE IF EXISTS temp.x_place_best;
 DROP TABLE IF EXISTS temp.x_village;
+-- Порядок «по книге» (задача 19, 26.11.2026): место записи — x_order,
+-- его заполняет Rust (book_order::fill_x_order) перед этим блоком. Пустая
+-- (порядок «по вводу») — записи идут по id, как раньше.
+CREATE TEMP TABLE IF NOT EXISTS x_order (entry_id INTEGER PRIMARY KEY, pos INTEGER NOT NULL);
 
 -- Пункт → самая полная строка с тем же названием. У Романа 01.10.2026 в
 -- выгрузке были пусты полные места: записи ссылались на строку пункта без
@@ -1754,6 +1758,7 @@ CREATE TEMP TABLE x_entry AS
 SELECT e.id, e.section, e.page, e.no_male, e.no_female,
        e.event_day, e.event_month, e.event_year, e.rite_day, e.rite_month, e.rite_year,
        coalesce(e.rite_year, e.event_year) AS book_year,
+       (SELECT o.pos FROM x_order o WHERE o.entry_id = e.id) AS pos,
        coalesce(e.updated_at, e.created_at) AS changed_at,
        nullif(trim(c.archive), '') AS archive, nullif(trim(c.fond), '') AS fond,
        nullif(trim(c.opis), '') AS opis, nullif(trim(c.delo), '') AS delo,
@@ -1900,7 +1905,7 @@ CREATE INDEX ix_x_text ON x_text (entry_id);
 CREATE TEMP TABLE x_row AS
 WITH d AS (
     SELECT e.*,
-           row_number() OVER (PARTITION BY e.section ORDER BY e.book_year, e.id) AS n,
+           row_number() OVER (PARTITION BY e.section ORDER BY e.book_year, e.pos, e.id) AS n,
            nullif(trim(coalesce('Ф.' || e.fond, '') || coalesce(' Оп.' || e.opis, '') || coalesce(' Д.' || e.delo, '')), '') AS fod,
            'Церковь: ' || coalesce(e.church, '') || ' Село: ' || coalesce(e.village, '')
              || ' Уезд: ' || coalesce(e.uyezd, '') || ' Губерния: ' || coalesce(e.guberniya, '') AS mk,
@@ -2030,7 +2035,7 @@ SELECT coalesce(rite_year, event_year) AS year,
 -- образце (у индексатора — текстом «05»). «Фамилия-2» — вторая фамилия в
 -- скобках («Глухов (Логунков)»): так её кладёт импорт Familio (21.10.2026).
 -- В «ФИО» одной колонкой (восприемники) фамилия — со скобками, как набрана.
-SELECT row_number() OVER (ORDER BY e.book_year, e.id),
+SELECT row_number() OVER (ORDER BY e.book_year, e.pos, e.id),
        e.archive, e.fond, e.opis, e.delo, e.page,
        e.village, e.village_full, e.church,
        CASE WHEN e.rite_year > e.event_year + 3 THEN 'присоединение' ELSE 'рождение' END,
@@ -2068,14 +2073,14 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
   LEFT JOIN x_text t ON t.entry_id = e.id
  WHERE e.section = 1
    AND (:years = '[]' OR e.book_year IN (SELECT value FROM json_each(:years)))
- ORDER BY e.book_year, e.id;
+ ORDER BY e.book_year, e.pos, e.id;
 
 -- @familio_marriage
 -- Лист БРАК: 97 колонок A…CS. «Отец жениха» и «Отец невесты» — родственник
 -- с родством «отец» (или без родства) со своим званием; другой родственник —
 -- в блок «Родственник … жениха/невесты» с родством. Поручители — по сторонам
 -- (x_witness): блоки 1–3 по жениху, 4–6 по невесте.
-SELECT row_number() OVER (ORDER BY e.book_year, e.id),
+SELECT row_number() OVER (ORDER BY e.book_year, e.pos, e.id),
        e.archive, e.fond, e.opis, e.delo, e.page,
        e.village, e.village_full, e.church, 'брак', e.no_male,
        e.event_day, e.event_month, e.event_year,
@@ -2150,14 +2155,14 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
   LEFT JOIN x_text t ON t.entry_id = e.id
  WHERE e.section = 2
    AND (:years = '[]' OR e.book_year IN (SELECT value FROM json_each(:years)))
- ORDER BY e.book_year, e.id;
+ ORDER BY e.book_year, e.pos, e.id;
 
 -- @familio_death
 -- Лист СМЕРТЬ: 53 колонки A…BA. Родство — из родства родственника (у
 -- индексатора сюда попадало его примечание). Погребение совершал — священник;
 -- исповедовал — тот из причта, у кого в примечании «исповед». Умерший без
 -- имени («личность не установлена») выгружается без ИОФ, со званием.
-SELECT row_number() OVER (ORDER BY e.book_year, e.id),
+SELECT row_number() OVER (ORDER BY e.book_year, e.pos, e.id),
        e.archive, e.fond, e.opis, e.delo, e.page,
        e.village, e.village_full, e.church, 'смерть', coalesce(e.no_male, e.no_female),
        CASE coalesce(u.gender, CASE WHEN e.no_female IS NOT NULL THEN 'Ж' WHEN e.no_male IS NOT NULL THEN 'М' END)
@@ -2184,7 +2189,7 @@ SELECT row_number() OVER (ORDER BY e.book_year, e.id),
   LEFT JOIN x_text t ON t.entry_id = e.id
  WHERE e.section = 3
    AND (:years = '[]' OR e.book_year IN (SELECT value FROM json_each(:years)))
- ORDER BY e.book_year, e.id;
+ ORDER BY e.book_year, e.pos, e.id;
 
 -- @familio_location
 -- Лист location: населённые пункты выгружаемых записей — село дела и места
@@ -2300,7 +2305,7 @@ SELECT c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16, c1
 -- отчество современное; у ребёнка отчество по имени отца), N…BP — строка
 -- листа записи, BS…BZ — служебные.
 WITH p AS (
-    SELECT x.*, e.book_year, e.section, e.event_year, e.no_female, e.changed_at, e.church, e.village,
+    SELECT x.*, e.book_year, e.pos, e.section, e.event_year, e.no_female, e.changed_at, e.church, e.village,
            CASE x.role_code
                 WHEN 'child' THEN 1 WHEN 'father' THEN 2 WHEN 'mother' THEN 3
                 WHEN 'godparent1' THEN 4 WHEN 'godparent2' THEN 5 WHEN 'godparent3' THEN 5 WHEN 'godparent4' THEN 5
@@ -2358,7 +2363,7 @@ s AS (
     SELECT r.*, nullif(trim(coalesce(r.fam || ' ', '') || coalesce(r.first_m || ' ', '') || coalesce(r.otch, '')), '') AS fio
       FROM r
 )
-SELECT row_number() OVER (ORDER BY s.book_year, s.section, s.entry_id, s.sort_order, s.id),
+SELECT row_number() OVER (ORDER BY s.book_year, s.section, s.pos, s.entry_id, s.sort_order, s.id),
        s.book_year, s.code,
        CASE WHEN s.role_code = 'deceased_relative' THEN 'умершего ' || coalesce(s.kinship, 'родственник')
             WHEN s.role_code = 'groom_relative' THEN 'родственник жениха ' || coalesce(s.kinship, '')
@@ -2393,7 +2398,7 @@ SELECT row_number() OVER (ORDER BY s.book_year, s.section, s.entry_id, s.sort_or
        CASE WHEN s.role_code = 'mother' THEN s.maiden END,
        1, 1, s.changed_at
   FROM s JOIN x_row xr ON xr.entry_id = s.entry_id
- ORDER BY s.book_year, s.section, s.entry_id, s.sort_order, s.id;
+ ORDER BY s.book_year, s.section, s.pos, s.entry_id, s.sort_order, s.id;
 
 -- @export_parish
 -- Село — для имени файла выгрузки: :village — из текущих реквизитов

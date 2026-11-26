@@ -678,6 +678,38 @@ def main() -> int:
               "Родственники: поручителя №1, отец — крестьянин Ефим" in (v("Q") or ""), str(v("Q")))
         mk = rows(db, sql, "excel_mk")
         check("Excel «МК»: строк без кода роли нет", all(x[col("C")] is not None for x in mk))
+
+        print("\n14. Порядок «по книге» (задача 19, 26.11.2026)")
+        # Порядок считает Rust (book_order::fill_x_order) в x_order; здесь —
+        # что блоки выгрузки идут по нему, а пустая x_order — прежний порядок.
+        def births_by():
+            return [r[0] for r in db.execute(
+                "SELECT entry_id FROM x_row WHERE section = 1 GROUP BY entry_id ORDER BY min(c1)").fetchall()]
+
+        def year_of(i):
+            y = db.execute("SELECT coalesce(rite_year, event_year) FROM entry WHERE id = ?", (i,)).fetchone()[0]
+            return (y is not None, y or 0)  # NULL в SQLite — первым
+        db.executescript(sql["export_prepare"])
+        before = births_by()
+        check("x_order пуста — записи по году книги и id", before == sorted(before, key=lambda i: (year_of(i), i)), str(before))
+        # Все рождения — в один год книги, иначе переставлять нечего.
+        years = db.execute("SELECT id, event_year, rite_year FROM entry WHERE section = 1").fetchall()
+        db.execute("UPDATE entry SET event_year = 1890, rite_year = 1890 WHERE section = 1")
+        db.execute("DELETE FROM x_order")
+        db.executemany("INSERT INTO x_order (entry_id, pos) VALUES (?, ?)", [(i, n) for n, i in enumerate(reversed(before))])
+        db.executescript(sql["export_prepare"])
+        check("x_order переживает export_prepare", db.execute("SELECT count(*) FROM x_order").fetchone()[0] == len(before))
+        after = births_by()
+        check("Excel: строки рождений — по x_order", after == list(reversed(before)), f"{after}")
+        fam_years = [r[col("R")] for r in rows(db, sql, "familio_birth")]
+        check("Familio: рождений столько же", len(fam_years) == len(before), str(fam_years))
+        db.executemany("UPDATE entry SET event_year = ?, rite_year = ? WHERE id = ?", [(e, r, i) for i, e, r in years])
+        check("Excel «МК» и Familio берут место из x_entry",
+              "s.pos" in sql["excel_mk"]
+              and all("e.book_year, e.pos, e.id" in sql[b] for b in ("familio_birth", "familio_marriage", "familio_death")))
+        db.execute("DELETE FROM x_order")
+        db.executescript(sql["export_prepare"])
+        check("снова пусто — прежний порядок", births_by() == before)
         # До выхода из временной папки: на Windows открытый файл не удаляется.
         db.close()
 

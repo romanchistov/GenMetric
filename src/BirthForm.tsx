@@ -25,6 +25,7 @@ import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
 import { FoldLine, FoldLink, foldSummary, useFold } from "./Fold";
 import Suggest from "./Suggest";
+import { EntryOrderToggle, shownOrder, useEntryOrder } from "./entryorder";
 import { kinExtra, kinFilled, kinOf, kinOfBirth, kinSex, NEW_KIN, type Kin } from "./kin";
 import { useFullIof } from "./FullIof";
 
@@ -70,6 +71,8 @@ const NEW_MOTHER = { ...EMPTY_PERSON, confession: CONFESSION };
 
 type Brief = {
   scan_file?: string | null;
+  /** Место в порядке книги (задача 19, `book_order`). */
+  book?: number;
   id: number;
   page: string | null;
   no_male: number | null;
@@ -315,6 +318,9 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
   const beforeEdit = useRef<{ page: string | null; count: number | null; year: number | null;
                                birthMonth: number | null; riteMonth: number | null } | null>(null);
   const [saved, setSaved] = useState<Brief[]>([]);
+  // «Набрано» по вводу или по книге (задача 19): saved — всегда по вводу.
+  const [byBook, setByBook] = useEntryOrder();
+  const shown = shownOrder(saved, byBook);
   useFillDown(savedList, [saved.length]);
   const yearHand = useNewYear(year, editingId !== null, onNewYear, scanCtx.askDir);
   const savedRef = useRef(saved);
@@ -1466,11 +1472,12 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
 
       {saved.length > 0 && (
         <section>
-          <h2>Набрано: {saved.length}{year !== null && <span className="ofyear"> — за {year} год</span>}</h2>
+          <h2 className="savedhead"><span>Набрано: {saved.length}{year !== null && <span className="ofyear"> — за {year} год</span>}</span>
+            <EntryOrderToggle byBook={byBook} onChange={setByBook} /></h2>
           <p className="hint">Нажмите «Открыть», чтобы поправить запись. Форма при этом должна быть пустой.</p>
           <table className="facts saved" ref={savedList}>
             <tbody>
-              {saved.map((e) => (
+              {shown.map((e) => (
                 <tr key={e.id} className={[rowSexClass(e), e.id === editingId ? "editing" : ""].filter(Boolean).join(" ")}>
                   <td>
                     {/* Номер первым, как в браках и смертях (Роман 28.09.2026);

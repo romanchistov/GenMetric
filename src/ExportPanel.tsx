@@ -5,6 +5,7 @@ import { focusNextField } from "./focus";
 import { dismissWarn, report, warn } from "./errors";
 import type { Case } from "./CaseHeader";
 import { stripPlaceType } from "./names";
+import { EntryOrderToggle, useEntryOrder } from "./entryorder";
 
 /**
  * Выгрузка (сборка #39, Роман 30.09.2026).
@@ -75,6 +76,7 @@ export default function ExportPanel({ mkCase }: { mkCase: Case }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"familio" | "excel" | null>(null);
   const [done, setDone] = useState<(Exported & { kind: string }) | null>(null);
+  const [byBook, setByBook] = useEntryOrder();
 
   async function loadYears(): Promise<YearCount[]> {
     const ys = await invoke<YearCount[]>("export_years");
@@ -141,6 +143,11 @@ export default function ExportPanel({ mkCase }: { mkCase: Case }) {
       <p className="hint">
         Файл сохраняется в папку «Документы/GenMetric». В Familio — по их образцу,
         весь приход или выбранные годы; в Excel — весь приход, как листы индексатора.
+      </p>
+      {/* Порядок записей в файле — как выбран в «Набрано» (задача 19). */}
+      <p className="exportorder" data-export-order={byBook ? "book" : "input"}>
+        Порядок записей: <b>{byBook ? "по книге" : "по вводу"}</b>
+        <EntryOrderToggle bare byBook={byBook} onChange={setByBook} />
       </p>
       <div className="exportbuttons">
         <button type="button" className="toggle" disabled={busy !== null} onClick={() => void openFamilio()}>

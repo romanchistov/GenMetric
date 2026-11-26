@@ -1199,6 +1199,47 @@ def pdf_tiff_scans(driver, root, scan_attr):
         "  foreign: await why(call('scan_reveal', {dir: arguments[1], name: 'дело 1897.pdf#3'})),"
         "  gone: await why(call('scan_reveal', {dir: arguments[0], name: 'нет такого.jpg'})),"
         "}))().then(done, (e) => done({error: String(e)}));", str(folder), str(folder.parent))
+    # Долг п. 26 (25–26.11.2026): строки жён в подсказке отца (задача 5) и
+    # одиночная жена (lone_wife, п. 25) — через настоящий Rust (suggest_person
+    # в main.rs), а не только копию в шиме стенда. Заодно — место записи в
+    # порядке книги в ответе entry_list (задача 19).
+    fathers = driver.execute_async_script(
+        "const done = arguments[arguments.length - 1];"
+        "const call = window.__TAURI_INTERNALS__.invoke;"
+        "const P = (role, so, first, patr, sur, gender, place) => ({role_code: role, sort_order: so, first_name: first,"
+        "  patronymic: patr, surname: sur, gender, rank: 'крестьянин', confession: null, place, note: null, uncertain: null});"
+        "const birth = (no, day, father, mother) => ({id: null, case_id: 0, section: 1, page: '77', no_male: no, no_female: null,"
+        "  event_day: day, event_month: 3, event_year: 1897, rite_day: day + 1, rite_month: 3, rite_year: 1897,"
+        "  note: null, uncertain: null, persons: [P('child', 10, 'Тест', null, null, 'М', null), father, mother]});"
+        "const place = 'Заборье (Нежитино)';"
+        "(async () => {"
+        "  await call('entry_save', {entry: birth(91, 5, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
+        "    P('mother', 30, 'Анна', 'Петрова', null, 'Ж', place))});"
+        "  await call('entry_save', {entry: birth(90, 3, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
+        "    P('mother', 30, 'Дарья', 'Ильина', null, 'Ж', place))});"
+        "  await call('entry_save', {entry: birth(92, 9, P('father', 20, 'Савва', 'Ильин', 'Тестов', 'М', place),"
+        "    P('mother', 30, 'Ксения', 'Ивановна', null, 'Ж', place))});"
+        "  const two = await call('suggest_person', {prefix: 'Аким Карпов Тестов', limit: 6, gender: 'М', preferInfant: false,"
+        "    keepWifeRank: false, wives: true});"
+        "  const one = await call('suggest_person', {prefix: 'Савва Ильин Тестов', limit: 6, gender: 'М', preferInfant: false,"
+        "    keepWifeRank: false, wives: true});"
+        "  const list = await call('entry_list', {section: 1, year: 1897, last: false});"
+        "  return {two, one, list: list.filter((e) => e.page === '77').map((e) => [e.no_male, e.book])};"
+        "})().then(done, (e) => done({error: String(e)}));")
+    check("подсказка отца: команды отвечают без ошибки", "error" not in fathers, str(fathers)[:400])
+    if "error" not in fathers:
+        akim = [h for h in fathers["two"] if (h.get("iof") or "").startswith("Аким")]
+        got = sorted(((h.get("wife") or {}).get("iof") or "") for h in akim)
+        check("тёзка с двумя жёнами — строка на жену, с подписью (не lone_wife)",
+              len(akim) == 2 and got[0].startswith("Анна") and got[1].startswith("Дарья")
+              and not any(h.get("lone_wife") for h in akim), str(akim)[:400])
+        savva = [h for h in fathers["one"] if (h.get("iof") or "").startswith("Савва")]
+        check("одна жена — одна строка, жена передана без подписи (lone_wife, п. 25)",
+              len(savva) == 1 and ((savva[0].get("wife") or {}).get("iof") or "").startswith("Ксения")
+              and savva[0].get("lone_wife") is True, str(savva)[:400])
+        by_book = [no for no, _ in sorted(fathers["list"], key=lambda x: x[1])]
+        check("entry_list: место в порядке книги — № 90 (обряд 4.03), набранная второй, раньше № 91 (6.03)",
+              by_book == [90, 91, 92], str(fathers["list"]))
     check("меню имени файла: не скан, путь наверх, чужая папка, пропавший файл — отказ",
           "error" not in refused and "не скан" in refused["exe"] and "не имя файла" in refused["up"]
           and "не открыта" in refused["foreign"] and "нет в папке" in refused["gone"], str(refused))

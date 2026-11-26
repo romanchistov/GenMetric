@@ -75,6 +75,10 @@ pub struct Exported {
 
 /// Временные таблицы выгрузки (x_*): считаются один раз на выгрузку.
 fn prepare(conn: &Connection) -> Result<(), String> {
+    // Порядок записей — как выбран в «Набрано» (задача 19): «по книге» —
+    // x_order по book_order, «по вводу» — пустая, записи по id.
+    let by_book = crate::parish::setting_get(conn, crate::book_order::ORDER_KEY)?.as_deref() == Some("1");
+    crate::book_order::fill_x_order(conn, by_book)?;
     conn.execute_batch(&statement("export_prepare")?).map_err(|e| format!("подготовка выгрузки: {e}"))
 }
 

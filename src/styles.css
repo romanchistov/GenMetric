@@ -524,6 +524,10 @@ button.linkish {
    у правого края. */
 .facts.saved tbody { display: table; width: 100%; }
 .facts.saved td + td { width: 1%; white-space: nowrap; }
+/* Полоса прокрутки macOS лежит поверх правого столбца — отступ у последней
+   ячейки, а не у списка: цвет строк остаётся на всю ширину (долг п. 30,
+   Нинель 26.11.2026: «скан» приходилось ловить). */
+.facts.saved td:last-child { padding-right: 1.1em; }
 
 /* ============================================================================
    Модальные окна: сверка имени со справочником, карточка населённого пункта
@@ -685,6 +689,24 @@ h2 .linkish.side, h3 .linkish.side { margin-left: 0.6em; font-weight: normal; }
    «Дело» и год в заголовке списка «Набрано». */
 h2.caseyear select { margin-left: 0.8em; font: inherit; font-weight: normal; }
 h2 .ofyear { font-weight: normal; color: var(--muted, #666); }
+/* «Набрано» — заголовок и справа переключатель порядка (задача 19). */
+h2.savedhead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6em; flex-wrap: wrap; }
+.entryorder { display: inline-flex; align-items: center; gap: 0.15em; font-size: 0.75rem; font-weight: normal; }
+.entryorderlabel { color: var(--muted); margin-right: 0.3em; }
+.entryorder button {
+  padding: 0.1em 0.6em; font: inherit; cursor: pointer;
+  background: var(--bg, #fff); color: var(--ink);
+  border: 1px solid var(--line);
+}
+.entryorder button:first-of-type {
+  border-radius: 6px 0 0 6px;
+}
+.entryorder button:last-of-type {
+  border-radius: 0 6px 6px 0;
+  border-left: 0;
+}
+.entryorder button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.exportorder { display: flex; align-items: center; gap: 0.6em; flex-wrap: wrap; margin: 0.4em 0; font-size: 0.9rem; }
 
 /* Окно «Приходы» и импорт из Excel (02.10.2026). */
 .parishrow { display: flex; align-items: baseline; gap: 0.6em; margin: 0 0 0.3em; font-size: 0.9rem; }

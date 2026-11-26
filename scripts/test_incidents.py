@@ -2902,7 +2902,24 @@ def incident_20261126_chej_rodstvennik_chuzhie_roli():
           sug.count("only ? all.filter((r) => only(r.value))") == 2)
 
 
+def incident_20261126_skan_pod_prokrutkoj():
+    """Нинель (Mac) 26.11.2026 (Бэклог р. 3 п. 30): «в списке набранного не
+    открыть скан, если скролл показался… прям прицеливаться нужно». Полоса
+    прокрутки macOS лежит поверх правого столбца «Набрано», а там — «скан».
+
+    Защита: отступ справа у последней ячейки строки (не у списка — иначе цвет
+    строк снова не на всю ширину, п. 11). Стенд — s102.
+    """
+    css = read("src/styles.css")
+    check("«Набрано»: у последней ячейки строки отступ под полосу прокрутки",
+          ".facts.saved td:last-child { padding-right: 1.1em; }" in css)
+    i = css.find(".facts.saved { display: block;")
+    check("…а не у самого списка (цвет строк — на всю ширину)",
+          i >= 0 and "padding-right" not in css[i:css.find("}", i)])
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261126_skan_pod_prokrutkoj,
     incident_20261126_str_za_nomerom_kadra,
     incident_20261126_chej_rodstvennik_chuzhie_roli,
     incident_20261124_god_odnoj_formy,

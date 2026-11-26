@@ -11,6 +11,7 @@ import NumberField from "./NumberField";
 import PageField from "./PageField";
 import ClergyBlock from "./ClergyBlock";
 import Suggest from "./Suggest";
+import { EntryOrderToggle, shownOrder, useEntryOrder } from "./entryorder";
 import { useFormClergy } from "./clergy";
 import { useFullIof } from "./FullIof";
 import { eventYearOf, nextCount, riteBeforeEvent, rowSexClass, splitCount, type Sex } from "./count";
@@ -69,6 +70,8 @@ const NEW_RELATIVE: Relative = { ...EMPTY_PERSON, kinship: KIN_DEFAULT };
 
 type Brief = {
   scan_file?: string | null;
+  /** Место в порядке книги (задача 19, `book_order`). */
+  book?: number;
   id: number; page: string | null; no_male: number | null; no_female: number | null;
   event_day: number | null; event_month: number | null; event_year: number | null;
   rite_day?: number | null;
@@ -234,6 +237,9 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
   const beforeEdit = useRef<{ page: string | null; count: number | null; year: number | null;
                                deathMonth: number | null; burialMonth: number | null } | null>(null);
   const [saved, setSaved] = useState<Brief[]>([]);
+  // «Набрано» по вводу или по книге (задача 19): saved — всегда по вводу.
+  const [byBook, setByBook] = useEntryOrder();
+  const shown = shownOrder(saved, byBook);
   useFillDown(savedList, [saved.length]);
   const yearHand = useNewYear(year, editingId !== null, onNewYear, scanCtx.askDir);
   const savedRef = useRef(saved);
@@ -1133,11 +1139,12 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
 
       {saved.length > 0 && (
         <section>
-          <h2>Набрано смертей: {saved.length}{year !== null && <span className="ofyear"> — за {year} год</span>}</h2>
+          <h2 className="savedhead"><span>Набрано смертей: {saved.length}{year !== null && <span className="ofyear"> — за {year} год</span>}</span>
+            <EntryOrderToggle byBook={byBook} onChange={setByBook} /></h2>
           <p className="hint">Нажмите «Открыть», чтобы поправить запись. Форма при этом должна быть пустой.</p>
           <table className="facts saved" ref={savedList}>
             <tbody>
-              {saved.map((e) => (
+              {shown.map((e) => (
                 <tr key={e.id} className={[rowSexClass(e, e.deceased_gender), e.id === editingId ? "editing" : ""].filter(Boolean).join(" ")}>
                   <td>
                     {e.no_male !== null ? `№ м. ${e.no_male}` : e.no_female !== null ? `№ ж. ${e.no_female}` : "без №"}

@@ -149,6 +149,23 @@ mod tests {
         BookRow { id, page: (!page.is_empty()).then(|| page.to_string()), no_male: m, no_female: f, date }
     }
 
+    /// Замер на копии настоящей базы (проверяющий 26.11.2026: O(n·m) у
+    /// записей без даты): `GENMETRIC_ORDER_DB=/копия.sqlite cargo test -p
+    /// genmetric-core --release book_order_real -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn book_order_real() {
+        let db = std::env::var("GENMETRIC_ORDER_DB").expect("GENMETRIC_ORDER_DB");
+        let conn = Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let n: i64 = conn.query_row("SELECT count(*) FROM entry", [], |r| r.get(0)).unwrap();
+        let t = std::time::Instant::now();
+        fill_x_order(&conn, true).unwrap();
+        let spent = t.elapsed();
+        let placed: i64 = conn.query_row("SELECT count(*) FROM x_order", [], |r| r.get(0)).unwrap();
+        println!("записей {n}, в порядке книги {placed}, время {spent:?}");
+        assert_eq!(n, placed, "каждая запись — один раз");
+    }
+
     #[test]
     fn export_order_by_section_and_year() {
         let conn = Connection::open_in_memory().unwrap();

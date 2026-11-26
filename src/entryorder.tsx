@@ -23,7 +23,10 @@ type Booked = { book?: number };
  * последняя по книге — сверху.
  */
 export function shownOrder<T extends Booked>(saved: T[], byBook: boolean): T[] {
-  return byBook ? [...saved].sort((a, b) => (b.book ?? 0) - (a.book ?? 0)) : saved;
+  // Места ещё нет (запись только что сохранена, список перечитывается) —
+  // сверху, как последняя набранная, а не внизу (ревьюер 26.11.2026).
+  const at = (e: T) => e.book ?? Number.MAX_SAFE_INTEGER;
+  return byBook ? [...saved].sort((a, b) => at(b) - at(a)) : saved;
 }
 
 /** Переключатель «Порядок: по вводу | по книге» — заголовок «Набрано» и окно

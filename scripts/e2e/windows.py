@@ -1213,18 +1213,26 @@ def pdf_tiff_scans(driver, root, scan_attr):
         "  note: null, uncertain: null, persons: [P('child', 10, 'Тест', null, null, 'М', null), father, mother]});"
         "const place = 'Заборье (Нежитино)';"
         "(async () => {"
-        "  await call('entry_save', {entry: birth(91, 5, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
-        "    P('mother', 30, 'Анна', 'Петрова', null, 'Ж', place))});"
-        "  await call('entry_save', {entry: birth(90, 3, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
-        "    P('mother', 30, 'Дарья', 'Ильина', null, 'Ж', place))});"
-        "  await call('entry_save', {entry: birth(92, 9, P('father', 20, 'Савва', 'Ильин', 'Тестов', 'М', place),"
-        "    P('mother', 30, 'Ксения', 'Ивановна', null, 'Ж', place))});"
+        "  const ids = [];"
+        "  const keep = (r) => { ids.push(r.id); return r; };"
+        "  keep(await call('entry_save', {entry: birth(91, 5, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
+        "    P('mother', 30, 'Анна', 'Петрова', null, 'Ж', place))}));"
+        "  keep(await call('entry_save', {entry: birth(90, 3, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
+        "    P('mother', 30, 'Дарья', 'Ильина', null, 'Ж', place))}));"
+        "  keep(await call('entry_save', {entry: birth(92, 9, P('father', 20, 'Савва', 'Ильин', 'Тестов', 'М', place),"
+        "    P('mother', 30, 'Ксения', 'Ивановна', null, 'Ж', place))}));"
         "  const two = await call('suggest_person', {prefix: 'Аким Карпов Тестов', limit: 6, gender: 'М', preferInfant: false,"
         "    keepWifeRank: false, wives: true});"
         "  const one = await call('suggest_person', {prefix: 'Савва Ильин Тестов', limit: 6, gender: 'М', preferInfant: false,"
         "    keepWifeRank: false, wives: true});"
         "  const list = await call('entry_list', {section: 1, year: 1897, last: false});"
-        "  return {two, one, list: list.filter((e) => e.page === '77').map((e) => [e.no_male, e.book])};"
+        "  const mine = list.filter((e) => e.page === '77').map((e) => [e.no_male, e.book]);"
+        # Свои записи — убрать: следующие шаги (продолжить с места после
+        # перезапуска, «Набрано», скан последней записи) их видеть не должны
+        # (ревьюер 26.11.2026).
+        "  for (const id of ids) await call('entry_delete', {id});"
+        "  const after = await call('entry_list', {section: 1, year: 1897, last: false});"
+        "  return {two, one, list: mine, left: after.filter((e) => e.page === '77').length, saved: ids.length};"
         "})().then(done, (e) => done({error: String(e)}));")
     check("подсказка отца: команды отвечают без ошибки", "error" not in fathers, str(fathers)[:400])
     if "error" not in fathers:
@@ -1238,6 +1246,7 @@ def pdf_tiff_scans(driver, root, scan_attr):
               len(savva) == 1 and ((savva[0].get("wife") or {}).get("iof") or "").startswith("Ксения")
               and savva[0].get("lone_wife") is True, str(savva)[:400])
         by_book = [no for no, _ in sorted(fathers["list"], key=lambda x: x[1])]
+        check("тестовые записи шага убраны", fathers["saved"] == 3 and fathers["left"] == 0, str(fathers.get("left")))
         check("entry_list: место в порядке книги — № 90 (обряд 4.03), набранная второй, раньше № 91 (6.03)",
               by_book == [90, 91, 92], str(fathers["list"]))
     check("меню имени файла: не скан, путь наверх, чужая папка, пропавший файл — отказ",

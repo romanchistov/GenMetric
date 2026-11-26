@@ -2937,7 +2937,29 @@ def incident_20261126_kolesom_sdvigaet_stranicu():
           "const room = window.innerHeight - (box.top + window.scrollY) - below;" in fill)
 
 
+def incident_20261126_polosa_uezzhaet():
+    """Роман 26.11.2026 (Бэклог р. 3 п. 32): жёлтая полоса «У 1905 года уже
+    есть дело с другими реквизитами» — «не закреплено сверху и становится не
+    видным, так как окно скролится вниз». Полоса стояла в начале страницы и
+    уезжала вместе с ней.
+
+    Защита: `.errorbar` закреплена вверху окна (sticky) и лежит поверх формы;
+    появившаяся полоса сдвигает «Набрано» — `useFillDown` следит и за `.app`.
+    Стенд — s104 (полоса видна после прокрутки), s103 (полоса над формой —
+    страница не выше окна).
+    """
+    css = read("src/styles.css")
+    i = css.find(".errorbar {")
+    bar = css[i:css.find("}", i)]
+    check("жёлтая и оранжевая полосы закреплены вверху окна",
+          i >= 0 and "position: sticky;" in bar and "top: 0.4em;" in bar and "z-index: 40;" in bar)
+    fill = strip_comments(read("src/fill.ts"))
+    check("«Набрано» пересчитывает место, когда над формой появилась полоса",
+          'const app = el.closest(".app");' in fill and "if (app) sized.observe(app);" in fill)
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261126_polosa_uezzhaet,
     incident_20261126_kolesom_sdvigaet_stranicu,
     incident_20261126_skan_pod_prokrutkoj,
     incident_20261126_str_za_nomerom_kadra,

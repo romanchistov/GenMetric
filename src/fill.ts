@@ -44,6 +44,10 @@ export function useFillDown(ref: RefObject<HTMLElement | null>, deps: unknown[])
     // другое (ревьюер 19.10.2026).
     const sized = new ResizeObserver(later);
     if (el.parentElement) sized.observe(el.parentElement.parentElement ?? el.parentElement);
+    // Над формой появилась или пропала жёлтая полоса — список сдвинулся
+    // целиком, место под ним другое (Бэклог р. 3 п. 32).
+    const app = el.closest(".app");
+    if (app) sized.observe(app);
     window.addEventListener("resize", later);
     return () => { cancelAnimationFrame(frame); seen.disconnect(); sized.disconnect(); window.removeEventListener("resize", later); };
   }, deps);

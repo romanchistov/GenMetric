@@ -4,7 +4,7 @@ import Suggest from "./Suggest";
 import { report } from "./errors";
 import { ScanLink } from "./scan";
 import { focusNextField } from "./focus";
-import { ageWords, bornMark, childYear, dateOf, describe, diedMark, eventKind, family, familyTimeline, marriageLine, nameless, personTail, type DossierEvent, type Mention, type Part } from "./dossier";
+import { ageWords, bornMark, bornParen, childYear, dateOf, describe, diedMark, entriesWord, eventKind, family, familyTimeline, marriageLine, mentionedLine, nameless, personTail, type DossierEvent, type Mention, type Part } from "./dossier";
 
 /**
  * Экран «Поиск»: персона по приходу и её досье (спека
@@ -397,10 +397,10 @@ export default function SearchScreen({ active, request, onOpenEntry, onBack, bac
                   return (
                     <li key={`${p.key}|${p.place}`} className={on ? "on" : ""} data-hit={p.iof}
                         onMouseDown={(e) => { e.preventDefault(); setPicked({ key: p.key, place: p.place }); }}>
-                      <span className="val">{p.iof}<span className="sub">{[p.place || "без НП", bornMark(p.born, p.born_about), diedMark(p.died),
+                      <span className="val">{p.iof}{bornParen(p.born, p.born_about) && <> {bornParen(p.born, p.born_about)}</>}<span className="sub">{[p.place || "без НП", diedMark(p.died),
                         // Женщина — и с девичьей фамилией, и с фамилией мужа (спека, п. 2.3).
                         (p.also ?? []).length ? `также: ${(p.also ?? []).join("; ")}` : ""].filter(Boolean).join(" · ")}</span></span>
-                      <span className="tier">{years(p.year_from, p.year_to)} · {p.mentions}</span>
+                      <span className="tier">{mentionedLine(p.year_from, p.year_to, p.mentions)}</span>
                     </li>
                   );
                 })}
@@ -443,10 +443,13 @@ export default function SearchScreen({ active, request, onOpenEntry, onBack, bac
                                                   rank: null, gender: null, age: null, death_cause: null, marriage_order: null, kinship: null, note: null })}>
                         {p.iof}
                       </button>
-                      <span className="sub"> · {[p.place || "без НП", p.spouse ? `${["mother", "bride"].includes((p.role ?? "").replace(/\d+$/, "")) ? "муж" : ["father", "groom"].includes((p.role ?? "").replace(/\d+$/, "")) ? "жена" : "супруг(а)"}: ${p.spouse}` : "", bornMark(p.born, p.born_about),
+                      {/* Год рождения — в скобках за именем, годы упоминаний —
+                          фразой (Роман 26.11.2026, Бэклог р. 3 п. 33). */}
+                      {bornParen(p.born, p.born_about) && <span className="sub"> {bornParen(p.born, p.born_about)}</span>}
+                      <span className="sub"> · {[p.place || "без НП", p.spouse ? `${["mother", "bride"].includes((p.role ?? "").replace(/\d+$/, "")) ? "муж" : ["father", "groom"].includes((p.role ?? "").replace(/\d+$/, "")) ? "жена" : "супруг(а)"}: ${p.spouse}` : "",
                                                   // Годы — если они не тот же год рождения или смерти.
-                                                  [p.born, p.died].includes(p.year_from) && p.year_from === p.year_to ? "" : years(p.year_from, p.year_to), diedMark(p.died),
-                                                  `упоминаний ${p.mentions}`].filter(Boolean).join(" · ")}</span>
+                                                  [p.born, p.died].includes(p.year_from) && p.year_from === p.year_to ? entriesWord(p.mentions) : mentionedLine(p.year_from, p.year_to, p.mentions),
+                                                  diedMark(p.died)].filter(Boolean).join(" · ")}</span>
                     </li>
                   ))}
                 </ul>

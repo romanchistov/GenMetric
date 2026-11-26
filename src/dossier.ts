@@ -353,5 +353,27 @@ export const bornMark = (born: number | null | undefined, about?: [number, numbe
   return to - from > 7 ? `р. ${from}–${to}` : `р. ок. ${Math.floor((from + to) / 2)}`;
 };
 
+/** «(р. 1819–1872)» сразу за именем (Роман 26.11.2026, Бэклог р. 3 п. 33:
+ *  год рождения слипался с годами упоминаний); пусто — года нет. */
+export const bornParen = (born: number | null | undefined, about?: [number, number] | null) => {
+  const mark = bornMark(born, about);
+  return mark ? `(${mark})` : "";
+};
+
+/** «1 запись», «3 записи», «12 записей». */
+export function entriesWord(n: number): string {
+  const d = n % 10, dd = n % 100;
+  const w = d === 1 && dd !== 11 ? "запись" : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? "записи" : "записей";
+  return `${n} ${w}`;
+}
+
+/** «упоминается в 1889 г., 1 запись», «… в 1885–1903 гг., 12 записей»
+ *  (выбор Романа 26.11.2026); без лет — «1 запись». */
+export function mentionedLine(from: number | null, to: number | null, n: number): string {
+  if (from === null) return entriesWord(n);
+  const span = to === null || to === from ? `${from} г.` : `${from}–${to} гг.`;
+  return `упоминается в ${span}, ${entriesWord(n)}`;
+}
+
 /** «† 1887» — у умершего; пусто — у живого или неизвестного. */
 export const diedMark = (died: number | null | undefined) => (died ? `† ${died}` : "");

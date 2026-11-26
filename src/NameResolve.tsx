@@ -30,11 +30,13 @@ type Props = {
   onCancel: () => void;
   /** «Это не отчество» — запомнить и больше не спрашивать. */
   onNotPatr?: () => void;
+  /** Подпись кнопки отмены: из «Запомненных написаний» набора нет. */
+  cancelLabel?: string;
 };
 
 type Row = { value: string; gender: string | null };
 
-export default function NameResolve({ word, kind, gender, onPick, onCancel, onNotPatr }: Props) {
+export default function NameResolve({ word, kind, gender, onPick, onCancel, onNotPatr, cancelLabel }: Props) {
   const [query, setQuery] = useState("");
   const [similar, setSimilar] = useState<Row[]>([]);
   const [found, setFound] = useState<Row[]>([]);
@@ -129,7 +131,7 @@ export default function NameResolve({ word, kind, gender, onPick, onCancel, onNo
             Это не отчество
           </button>
         )}
-        <button type="button" className="toggle" onClick={onCancel}>Исправить набор (Esc)</button>
+        <button type="button" className="toggle" onClick={onCancel}>{cancelLabel ?? "Исправить набор"} (Esc)</button>
       </div>
     </Modal>
   );

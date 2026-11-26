@@ -81,3 +81,14 @@ CREATE TABLE IF NOT EXISTS name_alias (
   created_at  TEXT,
   UNIQUE (kind, form_norm)
 );
+
+-- Соответствия, удалённые в блоке «Запомненные написания» (задача 15,
+-- 26.11.2026). Сверка убирает в приходе и здесь соответствие не новее
+-- отметки — иначе его вернул бы общий файл или другой приход. Решение,
+-- принятое позже удаления, остаётся.
+CREATE TABLE IF NOT EXISTS name_alias_removed (
+  kind        TEXT NOT NULL,
+  form_norm   TEXT NOT NULL,
+  removed_at  TEXT NOT NULL,
+  UNIQUE (kind, form_norm)
+);

@@ -205,7 +205,18 @@ SELECT c.kind, c.value, c.value_norm,
 -- ---------------------------------------------------------------------------
 -- 4. Соответствия имён из окна сверки. Повторное решение заменяет прежнее
 --    (alias_save), поэтому из двух разных верно более позднее.
+--    Удалённое в «Запомненных написаниях» (common.name_alias_removed) —
+--    сначала убрать и здесь, и в общем файле, если оно не новее удаления.
 -- ---------------------------------------------------------------------------
+DELETE FROM main.name_alias
+ WHERE EXISTS (SELECT 1 FROM common.name_alias_removed r
+                WHERE r.kind = name_alias.kind AND r.form_norm = name_alias.form_norm
+                  AND r.removed_at >= coalesce(name_alias.created_at, ''));
+DELETE FROM common.name_alias
+ WHERE EXISTS (SELECT 1 FROM common.name_alias_removed r
+                WHERE r.kind = name_alias.kind AND r.form_norm = name_alias.form_norm
+                  AND r.removed_at >= coalesce(name_alias.created_at, ''));
+
 INSERT INTO common.name_alias (kind, form, form_norm, target, gender, created_at)
 SELECT kind, form, form_norm, target, gender, created_at FROM main.name_alias WHERE true
     ON CONFLICT (kind, form_norm) DO UPDATE

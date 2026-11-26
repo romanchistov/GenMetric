@@ -13,6 +13,7 @@ import { report, warn } from "./errors";
 import { dirtyForms } from "./dirty";
 import { FIELDS } from "./focus";
 import ArchiveBlock from "./ArchiveBlock";
+import AliasesBlock from "./AliasesBlock";
 import CleanupBlock from "./CleanupBlock";
 import FindReplaceBlock from "./FindReplaceBlock";
 import WivesBlock from "./WivesBlock";
@@ -464,6 +465,8 @@ export default function App() {
           <CleanupBlock />
           {/* Найти и заменить значение в записях (Роман 12.11.2026: «головая боль»). */}
           <FindReplaceBlock onOpenEntry={openEntry} />
+          {/* Запомненные написания имён и отчеств (задача 15, Роман 20.11.2026). */}
+          <AliasesBlock />
           {/* Фамилии жён по мужьям (Роман 12.10.2026, спека 2026-10-20-familii-zhyon). */}
           <WivesBlock onOpenEntry={openEntry} />
 

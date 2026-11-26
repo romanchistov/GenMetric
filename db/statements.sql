@@ -608,6 +608,22 @@ SELECT target, gender FROM name_alias WHERE kind = :kind AND form_norm = :form_n
 INSERT OR REPLACE INTO name_alias (kind, form, form_norm, target, gender)
 VALUES (:kind, :form, :form_norm, :target, :gender);
 
+-- @alias_list
+-- Блок «Запомненные написания» (задача 15): все соответствия прихода.
+SELECT kind, form, form_norm, target FROM name_alias ORDER BY form_norm, kind;
+
+-- @alias_remove
+-- «Удалить»: при следующем наборе написания окно сверки откроется снова.
+DELETE FROM name_alias WHERE kind = :kind AND form_norm = :form_norm;
+
+-- @alias_removed_mark
+-- Отметка удаления в общем файле: сверка не вернёт соответствие из общего
+-- файла и других приходов (parish_sync.sql, шаг 4). Время — как у
+-- created_at (datetime('now')).
+INSERT INTO common.name_alias_removed (kind, form_norm, removed_at)
+VALUES (:kind, :form_norm, datetime('now'))
+    ON CONFLICT (kind, form_norm) DO UPDATE SET removed_at = excluded.removed_at;
+
 -- @name_headwords
 -- Имена-основы словаря для поиска похожих. Разговорные формы с base_name
 -- («Марья» → «Мария») сюда не входят: соответствие ведёт к основе.

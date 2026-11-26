@@ -3,7 +3,7 @@
  * Проверка слов досье — src/dossier.ts (Роман 09.10.2026: «хронологическое
  * „досье“ человека»). Запуск: node --experimental-strip-types scripts/test_dossier.mjs
  */
-import { ageWords, bornMark, childYear, dateOf, describe, diedMark, eventKind, family, familyTimeline, marriageLine, nameless, personTail, roleKind } from "../src/dossier.ts";
+import { ageWords, bornMark, bornParen, childYear, dateOf, describe, diedMark, entriesWord, eventKind, family, familyTimeline, marriageLine, mentionedLine, nameless, personTail, roleKind } from "../src/dossier.ts";
 
 let ok = 0, bad = 0;
 const check = (title, cond, detail = "") => {
@@ -152,6 +152,17 @@ console.log("\nСвоё рождение (спека 2026-10-15-semya-celikom)\n
     && bornMark(null, [1888, 1893]) === "р. ок. 1890" && bornMark(null, [1875, 1882]) === "р. ок. 1878"
     && bornMark(null, [1875, 1883]) === "р. 1875–1883" && bornMark(null, null) === "" && bornMark(undefined, undefined) === "");
   check("«†» — у умершего, у живого пусто", diedMark(1890) === "† 1890" && diedMark(null) === "" && diedMark(undefined) === "");
+  // Роман 26.11.2026 (Бэклог р. 3 п. 33): «1819 1872 1889» слипались.
+  check("год рождения — в скобках, без года — пусто",
+    bornParen(null, [1819, 1872]) === "(р. 1819–1872)" && bornParen(1886, null) === "(р. 1886)" && bornParen(null, null) === "");
+  check("«запись» склоняется по числу",
+    ["1 запись", "2 записи", "4 записи", "5 записей", "11 записей", "12 записей", "14 записей", "21 запись", "22 записи", "111 записей", "0 записей"].join()
+    === [1, 2, 4, 5, 11, 12, 14, 21, 22, 111, 0].map(entriesWord).join());
+  check("годы упоминаний — фразой",
+    mentionedLine(1889, 1889, 1) === "упоминается в 1889 г., 1 запись"
+    && mentionedLine(1885, 1903, 12) === "упоминается в 1885–1903 гг., 12 записей"
+    && mentionedLine(1889, null, 3) === "упоминается в 1889 г., 3 записи"
+    && mentionedLine(null, null, 2) === "2 записи");
   // Смерть своего ребёнка — «свои события» (Роман 19.10.2026).
   check("смерть ребёнка у отца — «свои события», у брата — «участие»",
         eventKind(m("deceased_relative", "Иван Капитонов", { kinship: "отец" })) === "own"

@@ -668,6 +668,21 @@ fn alias_save(app: State<App>, kind: String, form: String, target: Option<String
     })
 }
 
+/// «Запомненные написания» на «О программе» (задача 15): все соответствия.
+#[tauri::command]
+fn alias_list(app: State<App>) -> Result<Vec<genmetric_core::aliases::Alias>, String> {
+    with_conn(&app, "Запомненные написания", genmetric_core::aliases::list)
+}
+
+/// «Удалить» соответствие: отметка в общем файле и сверка — удалённое не
+/// вернётся из других приходов.
+#[tauri::command]
+fn alias_remove(app: State<App>, kind: String, form_norm: String) -> Result<(), String> {
+    with_conn_shared(&app, "Удаление запомненного написания", |conn| {
+        genmetric_core::aliases::remove(conn, &kind, &form_norm)
+    })
+}
+
 /// Чтение настройки. Настройки живут в базе, поэтому переживают перезапуск.
 #[tauri::command]
 fn get_setting(app: State<App>, key: String) -> Result<Option<String>, String> {
@@ -3219,6 +3234,8 @@ fn main() {
             similar_names,
             dict_search,
             alias_save,
+            alias_list,
+            alias_remove,
             place_check,
             place_save,
             place_get,

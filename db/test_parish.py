@@ -108,7 +108,7 @@ def main() -> int:
               one_a("SELECT target FROM common.name_alias WHERE form = 'Пискарь'") == "Кесарь")
         tables = {r[0] for r in a.execute("SELECT name FROM common.sqlite_master WHERE type = 'table'")}
         check("персон, жён, причта и записей в общем файле нет",
-              tables == {"parish", "setting", "place", "place_renamed", "place_merged", "lookup", "name_alias"}, str(sorted(tables)))
+              tables == {"parish", "setting", "place", "place_renamed", "place_merged", "lookup", "name_alias", "name_alias_removed"}, str(sorted(tables)))
         before = a.execute("SELECT count(*), (SELECT count(*) FROM main.lookup), (SELECT count(*) FROM common.place) FROM main.place").fetchone()
         sync(a)
         after = a.execute("SELECT count(*), (SELECT count(*) FROM main.lookup), (SELECT count(*) FROM common.place) FROM main.place").fetchone()
@@ -253,6 +253,28 @@ def main() -> int:
         check("дубликатов перечня нет",
               b.execute("SELECT count(*) FROM main.lookup WHERE kind = 'rank_m' AND value_norm = ?",
                         (norm("волостной писарь"),)).fetchone()[0] == 1)
+
+        print("\n7а. Удалённое соответствие не возвращается сверкой (задача 15)")
+        b.execute(sql["alias_removed_mark"], dict(kind="name", form_norm=norm("Пискарь")))
+        b.execute(sql["alias_remove"], dict(kind="name", form_norm=norm("Пискарь")))
+        sync(b)
+        check("в Б удалено и после сверки",
+              b.execute(sql["alias_find"], dict(kind="name", form_norm=norm("Пискарь"))).fetchone() is None)
+        check("в общем файле нет",
+              b.execute("SELECT count(*) FROM common.name_alias WHERE form = 'Пискарь'").fetchone()[0] == 0)
+        b.close()
+        a = open_parish(path_a, common)
+        sync(a)
+        check("в А сверка убрала удалённое в Б",
+              a.execute(sql["alias_find"], dict(kind="name", form_norm=norm("Пискарь"))).fetchone() is None)
+        a.execute("UPDATE common.name_alias_removed SET removed_at = '2026-10-01 10:00:00'")
+        a.execute(sql["alias_save"], dict(kind="name", form="Пискарь", form_norm=norm("Пискарь"), target="Кесарь", gender="М"))
+        sync(a)
+        a.close()
+        b = open_parish(path_b, common)
+        sync(b)
+        check("решение после удаления доходит до Б",
+              b.execute(sql["alias_find"], dict(kind="name", form_norm=norm("Пискарь"))).fetchone() == ("Кесарь", "М"))
 
         print("\n8. Настройки окна — общие")
         set_common = ("INSERT INTO common.setting (key, value) VALUES (?1, ?2) "

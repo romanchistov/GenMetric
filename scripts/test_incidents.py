@@ -2918,7 +2918,27 @@ def incident_20261126_skan_pod_prokrutkoj():
           i >= 0 and "padding-right" not in css[i:css.find("}", i)])
 
 
+def incident_20261126_kolesom_sdvigaet_stranicu():
+    """Роман 26.11.2026 (Бэклог р. 3 п. 31): «окно полностью помещается по
+    высоте экрана, но при скроле колесика все равно немного смещается вверх и
+    вниз». Список «Набрано» тянулся до низа окна с запасом 12 px, а под ним
+    18 px отступов и рамки — страница при любой высоте была выше окна на 6 px.
+
+    Защита: `useFillDown` меряет расстояние от низа списка до низа `.app`, а
+    верх списка считает от начала страницы. Стенд — s103 (и с SCALE=0.93,
+    SCAN=1).
+    """
+    fill = strip_comments(read("src/fill.ts"))
+    check("«Набрано» оставляет под собой столько, сколько там отступов, а не число",
+          'const app = el.closest(".app")?.getBoundingClientRect();' in fill
+          and "const below = app ? Math.max(0, app.bottom - box.bottom) : 12;" in fill
+          and "getBoundingClientRect().top - 12" not in fill)
+    check("верх списка — от начала страницы (прокрутка не меняет расчёт)",
+          "const room = window.innerHeight - (box.top + window.scrollY) - below;" in fill)
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261126_kolesom_sdvigaet_stranicu,
     incident_20261126_skan_pod_prokrutkoj,
     incident_20261126_str_za_nomerom_kadra,
     incident_20261126_chej_rodstvennik_chuzhie_roli,

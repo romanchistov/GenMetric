@@ -21,7 +21,15 @@ export function useFillDown(ref: RefObject<HTMLElement | null>, deps: unknown[])
       if (el.offsetParent === null) return;
       // Наименьшая высота — 14em из стилей, без сброса своей высоты на замер.
       const least = 14 * (parseFloat(getComputedStyle(el).fontSize) || 16);
-      const room = window.innerHeight - el.getBoundingClientRect().top - 12;
+      // Под списком — отступы и рамка его блока и окна: их меряем, а не
+      // берём числом. Запас 12 px был меньше настоящих 18 px, и страница при
+      // любой высоте окна выходила за него на 6 px — колесо её сдвигало
+      // (Роман 26.11.2026, Бэклог р. 3 п. 31). Верх — от начала страницы,
+      // а не окна: прокрутка не меняет расчёт.
+      const box = el.getBoundingClientRect();
+      const app = el.closest(".app")?.getBoundingClientRect();
+      const below = app ? Math.max(0, app.bottom - box.bottom) : 12;
+      const room = window.innerHeight - (box.top + window.scrollY) - below;
       const want = room > least ? `${Math.floor(room)}px` : "";
       if (el.style.maxHeight !== want) el.style.maxHeight = want;
     };

@@ -43,6 +43,25 @@ impl Sheets {
         self.dirs.lock().unwrap_or_else(|e| e.into_inner()).insert(norm(dir));
     }
 
+    /// Папка разрешена окну (выбрана человеком или открыта программой).
+    pub fn allowed(&self, dir: &Path) -> bool {
+        self.dirs.lock().unwrap_or_else(|e| e.into_inner()).contains(&norm(dir))
+    }
+
+    /// Файл листа для меню имени файла: папка разрешена окну, имя — скан,
+    /// файл на месте (задача 18).
+    fn file_of(&self, dir: &str, name: &str) -> Result<PathBuf, String> {
+        let dir = Path::new(dir);
+        if !self.allowed(dir) {
+            return Err("папка не открыта в программе".into());
+        }
+        let path = scans::sheet_file(dir, name)?;
+        if !path.is_file() {
+            return Err(format!("файла «{}» нет в папке", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()));
+        }
+        Ok(path)
+    }
+
     /// Страницы PDF: из памяти, пока файл не изменился, иначе — разбор файла.
     pub fn pdf_pages(&self, path: &Path) -> Result<Arc<Vec<Page>>, String> {
         let meta = std::fs::metadata(path).map_err(|e| format!("файл не читается: {e}"))?;
@@ -130,4 +149,32 @@ pub fn handle(app: tauri::AppHandle, request: tauri::http::Request<Vec<u8>>, res
             Err(e) => responder.respond(tauri::http::Response::new(e.to_string().into_bytes())),
         }
     });
+}
+
+/// Меню имени файла в панели скана: «Показать в папке» (задача 18, спека
+/// 2026-11-26-menyu-imeni-fajla). Окно передаёт папку и имя листа, а не путь.
+#[tauri::command]
+pub fn scan_reveal(sheets: tauri::State<Sheets>, dir: String, name: String) -> Result<(), String> {
+    let path = sheets.file_of(&dir, &name)?;
+    crate::export::reveal_path(path.to_string_lossy().to_string())
+}
+
+/// Меню имени файла: «Открыть во внешней программе» — программа, назначенная
+/// в системе для этого типа файла. Только сканы (картинки и PDF) из папки,
+/// разрешённой окну: исполняемый файл так не запустить.
+#[tauri::command]
+pub fn scan_open_external(sheets: tauri::State<Sheets>, dir: String, name: String) -> Result<(), String> {
+    let path = sheets.file_of(&dir, &name)?;
+    #[cfg(windows)]
+    let result = {
+        // Как двойной щелчок в проводнике. «/» проводник не понимает (п. 140).
+        use std::os::windows::process::CommandExt;
+        let path = path.to_string_lossy().replace('/', "\\");
+        std::process::Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn()
+    };
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&path).spawn();
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(&path).spawn();
+    result.map(|_| ()).map_err(|e| format!("не удалось открыть файл: {e}"))
 }

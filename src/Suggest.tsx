@@ -39,6 +39,9 @@ type Props = {
   autofocus?: boolean;
   /** Поле поменяла программа, а не человек — подсветить, как месяц (п. 132). */
   auto?: boolean;
+  /** Отбор строк перечня: «Чей родств.» — только роли своего раздела
+   *  (долг п. 28, Роман 26.11.2026). */
+  only?: (value: string) => boolean;
 };
 
 const TIER_TITLE: Record<number, string> = {
@@ -60,7 +63,7 @@ const TIER_TITLE: Record<number, string> = {
  * где переход шёл клавишей «вниз».
  */
 const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
-  { label, kind, value, onChange, placeholder, hint, browse, onLeave, action, fix, lock, skipFilled, autofocus, auto },
+  { label, kind, value, onChange, placeholder, hint, browse, onLeave, action, fix, lock, skipFilled, autofocus, auto, only },
   ref,
 ) {
   const [items, setItems] = useState<Item[]>([]);
@@ -99,7 +102,8 @@ const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
   function browseAll() {
     const mine = ++seq.current;
     invoke<Item[]>("suggest", { kind, prefix: "", limit: 200 })
-      .then((rows) => {
+      .then((all) => {
+        const rows = only ? all.filter((r) => only(r.value)) : all;
         if (mine !== seq.current) return;
         setItems(rows);
         setActive(Math.max(0, rows.findIndex((r) => r.value === value)));
@@ -130,8 +134,9 @@ const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
     // и перезапускает эффект — открытый по набору список пропадал бы.
     if (!byKeyboard) return;
     const mine = ++seq.current;
-    invoke<Item[]>("suggest", { kind, prefix: query, limit: 8 })
-      .then((rows) => {
+    invoke<Item[]>("suggest", { kind, prefix: query, limit: only ? 32 : 8 })
+      .then((all) => {
+        const rows = only ? all.filter((r) => only(r.value)).slice(0, 8) : all;
         if (mine !== seq.current) return; // ответ на устаревший запрос
         setItems(rows);
         // Звания ищутся и по вхождению (12.10.2026). Если с набранного не

@@ -1186,6 +1186,22 @@ def pdf_tiff_scans(driver, root, scan_attr):
     check("скан другого года (peek) не забирает папку «без года», обычное чтение — забирает",
           "error" not in peeked and peeked["look"] is None and bool(peeked["loose"])
           and peeked["own"] == peeked["loose"], str(peeked))
+    # Задача 18 (26.11.2026): меню имени файла — команды принимают папку и
+    # имя листа; чужая папка, не скан и пропавший файл — отказ. Сам запуск
+    # проводника и просмотрщика на раннере не проверяем.
+    refused = driver.execute_async_script(
+        "const done = arguments[arguments.length - 1];"
+        "const call = window.__TAURI_INTERNALS__.invoke;"
+        "const why = (p) => p.then(() => 'принято', (e) => String(e));"
+        "(async () => ({"
+        "  exe: await why(call('scan_open_external', {dir: arguments[0], name: 'x.exe'})),"
+        "  up: await why(call('scan_open_external', {dir: arguments[0], name: '..\\\\x.jpg'})),"
+        "  foreign: await why(call('scan_reveal', {dir: arguments[1], name: 'дело 1897.pdf#3'})),"
+        "  gone: await why(call('scan_reveal', {dir: arguments[0], name: 'нет такого.jpg'})),"
+        "}))().then(done, (e) => done({error: String(e)}));", str(folder), str(folder.parent))
+    check("меню имени файла: не скан, путь наверх, чужая папка, пропавший файл — отказ",
+          "error" not in refused and "не скан" in refused["exe"] and "не имя файла" in refused["up"]
+          and "не открыта" in refused["foreign"] and "нет в папке" in refused["gone"], str(refused))
     # Картинкой, как просмотрщик: img-src разрешает протокол scan, ответ 403 — ошибка загрузки.
     blocked = driver.execute_async_script(
         "const done = arguments[arguments.length - 1]; const img = new Image();"

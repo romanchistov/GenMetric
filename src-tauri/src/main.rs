@@ -3253,6 +3253,8 @@ fn main() {
             export::export_familio,
             export::export_excel,
             export::reveal_path,
+            scanserve::scan_reveal,
+            scanserve::scan_open_external,
             export::open_familio
         ])
         .on_window_event(windows::on_event)

@@ -56,6 +56,22 @@ pub fn split_sheet(name: &str) -> (&str, Option<usize>) {
     (name, None)
 }
 
+/// Файл листа для меню имени файла (задача 18, спека
+/// 2026-11-26-menyu-imeni-fajla): папка + имя листа → путь файла. Окно не
+/// передаёт произвольный путь: имя — без разделителей и «..», после «#N» —
+/// скан (картинка или PDF), поэтому исполняемый файл так не открыть. Лист
+/// PDF — сам файл PDF. Разрешена ли папка окну — решает вызывающий.
+pub fn sheet_file(dir: &Path, name: &str) -> Result<std::path::PathBuf, String> {
+    let (file, _) = split_sheet(name);
+    if file.is_empty() || file.contains(['/', '\\', ':']) || file == "." || file == ".." {
+        return Err(format!("«{name}» — не имя файла скана"));
+    }
+    if !is_scan(file) {
+        return Err(format!("«{file}» — не скан (картинка или PDF)"));
+    }
+    Ok(dir.join(file))
+}
+
 /// Порядок имён «по-человечески»: цифры сравниваются как числа, буквы — без
 /// учёта регистра. При равенстве решает обычное сравнение строк: порядок
 /// всегда один и тот же.
@@ -209,6 +225,17 @@ mod tests {
         assert_eq!(names, vec!["01.jpg", "1.jpg", "001об.jpg", "a.jpg", "IMG_99.jpg", "IMG_0100.jpeg", "Лист 1.jpg", "лист 2.JPG", "лист 10.jpg"]);
         assert_eq!(natural_cmp("скан12345678901234567890123.jpg", "скан12345678901234567890124.jpg"), Ordering::Less, "числа длиннее u64");
         assert_eq!(natural_cmp("a.jpg", "a.jpg"), Ordering::Equal);
+    }
+
+    #[test]
+    fn sheet_file_only_scans_in_dir() {
+        let dir = Path::new("сканы");
+        assert_eq!(sheet_file(dir, "IMG_9079.JPG").unwrap(), dir.join("IMG_9079.JPG"));
+        assert_eq!(sheet_file(dir, "дело.pdf#3").unwrap(), dir.join("дело.pdf"), "лист PDF — сам файл");
+        assert_eq!(sheet_file(dir, "лист.tif").unwrap(), dir.join("лист.tif"));
+        for bad in ["x.exe", "..", "../a.jpg", "..\\a.jpg", "a/b.jpg", "C:a.jpg", "", "x.jpg.exe", "._a.jpg"] {
+            assert!(sheet_file(dir, bad).is_err(), "{bad:?} должно быть отказом");
+        }
     }
 
     #[test]

@@ -79,7 +79,7 @@ export type ScanSync = {
 export type ScanAct =
   | { kind: "ready" }
   | { kind: "step"; by: 1 | -1 }
-  | { kind: "goto"; index: number }
+  | { kind: "goto"; index: number; typed?: boolean }
   | { kind: "keep"; on: boolean }
   /** Переключатель «картинки / PDF». */
   | { kind: "sheets"; value: "images" | "pdf" }

@@ -25,7 +25,7 @@ import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
 import { FoldLine, FoldLink, foldSummary, useFold } from "./Fold";
 import Suggest from "./Suggest";
-import { kinExtra, kinFilled, kinOf, kinSex, NEW_KIN, type Kin } from "./kin";
+import { kinExtra, kinFilled, kinOf, kinOfBirth, kinSex, NEW_KIN, type Kin } from "./kin";
 import { useFullIof } from "./FullIof";
 
 /**
@@ -1431,7 +1431,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
                          onPickPerson={(hint) => set((p) => ({ ...p, place: hint.place ?? p.place, rank: hint.rank ?? p.rank }))}
                          titleAfter={i === 0 ? <FoldLink block="birth_kin" onFold={() => foldKin(true)} /> : undefined}
                          before={<>
-                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled
+                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled only={kinOfBirth}
                                     onChange={(kinOf) => set((s) => ({ ...s, kinOf }))} />
                            <Suggest label="Родство" kind="kinship" value={k.kinship} browse skipFilled
                                     onChange={(kinship) => set((s) => ({ ...s, kinship }))} />

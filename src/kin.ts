@@ -42,3 +42,12 @@ export function kinOf(m: KinMention | undefined): Kin {
     kinship: m.kinship ?? "", kinOf: m.kin_of ?? "",
   };
 }
+
+/** «Чей родств.» — только роли своего раздела (долг п. 28, Роман
+ *  26.11.2026): перечень `kin_of` один на «Рождения» и «Браки». Убираются
+ *  лишь чужие роли поставки; своё вписанное остаётся. */
+const BIRTH_ONLY = new Set(["восприемника №1", "восприемника №2", "отца", "матери"]);
+const MARRIAGE_ONLY = new Set(["поручителя №1", "поручителя №2", "поручителя №3", "поручителя №4", "поручителя №5", "поручителя №6", "жениха", "невесты"]);
+const kinKey = (v: string) => v.trim().toLowerCase();
+export const kinOfBirth = (v: string) => !MARRIAGE_ONLY.has(kinKey(v));
+export const kinOfMarriage = (v: string) => !BIRTH_ONLY.has(kinKey(v));

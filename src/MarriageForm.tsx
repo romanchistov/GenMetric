@@ -23,7 +23,7 @@ import type { FormProps } from "./formprops";
 import { useFillDown } from "./fill";
 import { useNewYear } from "./newyear";
 import { FoldLine, FoldLink, foldSummary, useFold } from "./Fold";
-import { kinExtra, kinFilled, kinOf, kinSex, NEW_KIN, type Kin } from "./kin";
+import { kinExtra, kinFilled, kinOf, kinOfMarriage, kinSex, NEW_KIN, type Kin } from "./kin";
 
 /**
  * Форма ввода записи о браке (25.09.2026) — по образцу рождений.
@@ -808,7 +808,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
                          onPickPerson={pickInto(set)}
                          titleAfter={i === 0 ? <FoldLink block="marriage_kin" onFold={() => foldKin(true)} /> : undefined}
                          before={<>
-                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled
+                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled only={kinOfMarriage}
                                     onChange={(kinOf) => set((s) => ({ ...s, kinOf }))} />
                            <Suggest label="Родство" kind="kinship" value={k.kinship} browse skipFilled
                                     onChange={(kinship) => set((s) => ({ ...s, kinship }))} />

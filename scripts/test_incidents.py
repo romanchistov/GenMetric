@@ -1527,10 +1527,15 @@ def incident_20261014_stranica_i_dovodka():
     (rankForRole), тест крейта (parse_iof_with, пустой файл базы).
     """
     scan = read("src/scan.tsx")
-    check("страница за сканом: только листание на один файл с разворота набора, не переход по номеру",
+    # С 26.11.2026 (Роман, Бэклог р. 3 п. 29) номер кадра, набранный руками,
+    # тоже двигает страницу — по шагу на кадр (`typed`); прочие переходы
+    # по номеру (восстановление места) — нет. Решение 14.10 «при прыжках по
+    # номеру скана … смену страницы делать не нужно» этим отменено.
+    go_to = scan.split("goTo: (i, typed) => {", 1)[1].split("\n      },", 1)[0]
+    check("страница за сканом: листание на один файл и номер, набранный руками, с разворота набора",
           # С 24.11.2026 (задача 3) — и не пока место вкладки читается.
           "if (to !== at && !wasAway && !loading.current) turnListeners.current.forEach((fn) => fn(by));" in scan
-          and "turnListeners" not in scan.split("goTo: (i) => {", 1)[1].split("},", 1)[0]
+          and "if (typed && i !== at && !wasAway && !loading.current) {" in go_to
           and "if (busy || !file || !fn || frozen.current) return;" in scan
           and "root.current.offsetParent === null" in scan)
     forms = [read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")]
@@ -2861,7 +2866,45 @@ def incident_20261124_god_odnoj_formy():
         check(f"{form}: год, сменённый в другой форме, её не трогает",
               f"if (workYear.section !== {n}) return;" in src)
 
+def incident_20261126_str_za_nomerom_kadra():
+    """Роман 26.11.2026 (Бэклог р. 3 п. 29): «Если вписать номер кадра в поле
+    панели скана, скан переходит на этот кадр, а «Стр.» остаётся прежним» —
+    листание стрелками «Стр.» двигало, переход по номеру — нет.
+
+    Защита: номер, набранный в поле кадра, идёт в `goTo` с отметкой `typed`
+    (и из отдельного окна скана — в действии `goto`), и `goTo` зовёт
+    подписчиков листания по шагу на кадр. Стенд — s101.
+    """
+    scan = strip_comments(read("src/scan.tsx"))
+    check("набранный номер кадра — goTo с отметкой «набран руками»",
+          "scan.goTo(Math.min(count, n) - 1, true);" in scan)
+    check("goTo с отметкой зовёт подписчиков листания по шагу на кадр",
+          "for (let k = Math.abs(i - at); k > 0; k--) turnListeners.current.forEach((fn) => fn(by));" in scan)
+    check("отдельное окно скана передаёт отметку в главное",
+          'goTo: (i, typed) => act({ kind: "goto", index: i, typed })' in scan
+          and 'case "goto": s.goTo(a.index, a.typed); break;' in scan)
+
+
+def incident_20261126_chej_rodstvennik_chuzhie_roli():
+    """Роман 26.11.2026 (Бэклог р. 3 п. 28): «в списке «Чей родств.»
+    перечислены роли всех разделов. В «Рождениях» можно выбрать поручителя,
+    жениха и невесту, в «Браках» — восприемника, отца и мать».
+
+    Защита: подсказка «Чей родств.» в формах получает отбор своего раздела
+    (`kinOfBirth`, `kinOfMarriage` в `src/kin.ts`). Стенд — s101.
+    """
+    for form, only in (("BirthForm", "kinOfBirth"), ("MarriageForm", "kinOfMarriage")):
+        src = strip_comments(read(f"src/{form}.tsx"))
+        check(f"{form}: «Чей родств.» — только роли своего раздела",
+              f'<Suggest label="Чей родств." kind="kin_of" value={{k.kinOf}} browse skipFilled only={{{only}}}' in src)
+    sug = strip_comments(read("src/Suggest.tsx"))
+    check("подсказка применяет отбор и к ▾, и к набору",
+          sug.count("only ? all.filter((r) => only(r.value))") == 2)
+
+
 ИНЦИДЕНТЫ = [
+    incident_20261126_str_za_nomerom_kadra,
+    incident_20261126_chej_rodstvennik_chuzhie_roli,
     incident_20261124_god_odnoj_formy,
     incident_20261124_skan_zapisi_drugogo_goda,
     incident_20261124_skan_god_vkladki,

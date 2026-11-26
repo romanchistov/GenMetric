@@ -68,8 +68,10 @@ type Scan = {
   /** Листание человеком. */
   step: (by: 1 | -1) => void;
   /** Переход к развороту по порядковому номеру с нуля (Роман 12.10.2026:
-   *  «нажимать на стрелку 52 раза — не вариант»). */
-  goTo: (index: number) => void;
+   *  «нажимать на стрелку 52 раза — не вариант»). `typed` — номер набран
+   *  человеком в поле кадра: страница формы идёт за ним, как за листанием
+   *  (долг п. 29, Роман 26.11.2026). */
+  goTo: (index: number, typed?: boolean) => void;
   /**
    * Показать разворот записи по ссылке «скан». Место набора запоминается —
    * к нему возвращает кнопка «к набору». Год — год книги записи: папка у
@@ -93,8 +95,9 @@ type Scan = {
   visiting: number | null;
   /** Подписаться на перелистывание человеком на один файл (Alt+PageDown,
    *  Alt+PageUp, «←» и «→») — по нему форма сдвигает страницу (Роман
-   *  14.10.2026). Переход по номеру, ссылка «скан», показ записи на правке не
-   *  считаются. Возвращает отписку. */
+   *  14.10.2026). Номер, набранный в поле кадра, — столько шагов, на
+   *  сколько кадров переход (п. 29); ссылка «скан» и показ записи на правке
+   *  не считаются. Возвращает отписку. */
   onTurn: (fn: (by: 1 | -1) => void) => () => void;
   /** При перелистывании — то же место листа (true) или верх листа (false). */
   keepPlace: boolean;
@@ -594,9 +597,16 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
         invoke("set_setting", { key: "ui_scan_keep_place", value: value ? "1" : "0" })
           .catch((e) => report("Как вести скан при перелистывании — изменено, но не сохранено", e));
       },
-      goTo: (i) => {
+      goTo: (i, typed) => {
+        const wasAway = away !== null;
         if (away === "link" && !visitBase.current) settle();
         go(i);
+        // Номер набран руками — страница формы идёт за ним, как если бы до
+        // кадра долистали стрелками (п. 29): по шагу на кадр.
+        if (typed && i !== at && !wasAway && !loading.current) {
+          const by: 1 | -1 = i > at ? 1 : -1;
+          for (let k = Math.abs(i - at); k > 0; k--) turnListeners.current.forEach((fn) => fn(by));
+        }
       },
       show: (name, entryYear) => {
         // Запись другого года — её папка, если выбрана (задача 10).
@@ -694,7 +704,7 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
     switch (a.kind) {
       case "ready": send("scan", "scan-sync", syncRef.current); break;
       case "step": s.step(a.by); break;
-      case "goto": s.goTo(a.index); break;
+      case "goto": s.goTo(a.index, a.typed); break;
       case "keep": s.setKeepPlace(a.on); break;
       case "sheets": s.setKind(a.value); break;
       case "pick": s.pickDir(); break;
@@ -1098,13 +1108,43 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
     ? `${sheetLabel(scan.file ?? "")}: ${badWhy} — эту страницу программа показать не может.`
     : problem;
 
+  // Меню имени файла (задача 18, Олег 26.11.2026): «Показать в папке» и
+  // «Открыть во внешней программе». Закрывается выбором, щелчком мимо, Esc;
+  // курсор из поля формы не уходит. Esc — на перехвате окна: дальше он не
+  // идёт (не закрывает экран и не трогает поле).
+  const [fileMenu, setFileMenu] = useState(false);
+  const fileShown = count > 0 && !scan.missing && scan.file !== null && scan.dir !== null;
+  useEffect(() => { setFileMenu(false); }, [scan.file, scan.dir]);
+  useEffect(() => {
+    if (!fileMenu) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setFileMenu(false);
+    };
+    const away = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest?.("[data-scan-file-menu], [data-scan-file-items]")) setFileMenu(false);
+    };
+    window.addEventListener("keydown", esc, true);
+    window.addEventListener("mousedown", away, true);
+    return () => { window.removeEventListener("keydown", esc, true); window.removeEventListener("mousedown", away, true); };
+  }, [fileMenu]);
+  function fileAct(command: "scan_reveal" | "scan_open_external") {
+    setFileMenu(false);
+    if (!scan.dir || !scan.file) return;
+    invoke(command, { dir: scan.dir, name: scan.file })
+      .catch((e) => report(command === "scan_reveal" ? "Папка скана не открылась" : "Файл скана не открылся", e));
+  }
+
   // Номер разворота — поле: набрали, Enter — открыт. Курсор после этого
   // возвращается в поле формы, из которого пришли.
   const [typedNo, setTypedNo] = useState<string | null>(null);
   const cameFrom = useRef<HTMLElement | null>(null);
   function leaveNo(apply: boolean) {
     const n = Number(typedNo);
-    if (apply && typedNo && Number.isInteger(n) && n >= 1) scan.goTo(Math.min(count, n) - 1);
+    if (apply && typedNo && Number.isInteger(n) && n >= 1) scan.goTo(Math.min(count, n) - 1, true);
     setTypedNo(null);
     const back = cameFrom.current;
     cameFrom.current = null;
@@ -1113,7 +1153,7 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
   }
 
   return (
-    <aside className="scanpane" data-scan data-scan-file={scan.file ?? ""} data-scan-count={count}
+    <aside className="scanpane" data-scan data-scan-file={scan.file ?? ""} data-scan-count={count} data-scan-away={scan.away ?? ""}
            data-scan-loaded={loaded ?? ""} data-scan-problem={shownProblem ?? ""} data-scan-kind={scan.kind ?? ""}
            // Нажатие мыши в блоке не уводит курсор из поля формы: набор
            // продолжается в том же поле (спека, п. 2.3). Перетаскивание и
@@ -1151,10 +1191,22 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
                        if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); leaveNo(true); }
                        else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); leaveNo(false); }
                      }} />
-              <b> из {count}</b> · {sheetLabel(scan.file ?? "")}
+              <b> из {count}</b> ·{" "}
+              {fileShown ? (
+                <button type="button" className="scanfile" data-scan-file-menu {...keep} aria-haspopup="menu" aria-expanded={fileMenu}
+                        onClick={() => setFileMenu((v) => !v)} title="Показать в папке или открыть во внешней программе">
+                  {sheetLabel(scan.file ?? "")}
+                </button>
+              ) : sheetLabel(scan.file ?? "")}
             </>
           ) : "скан"}
         </span>
+        {fileMenu && fileShown && (
+          <div className="scanfilemenu" role="menu" data-scan-file-items>
+            <button type="button" role="menuitem" data-scan-reveal {...keep} onClick={() => fileAct("scan_reveal")}>Показать в папке</button>
+            <button type="button" role="menuitem" data-scan-open-external {...keep} onClick={() => fileAct("scan_open_external")}>Открыть во внешней программе</button>
+          </div>
+        )}
         {scan.kind && !scan.missing && (
           // В папке и картинки, и PDF (Роман 20.10: распаковывает PDF в JPG
           // в ту же папку) — показывается один вид; выбор помнится по году дела.
@@ -1174,8 +1226,10 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
           <span className="scanvisit" data-scan-visiting={scan.visiting}>скан {scan.visiting} года</span>
         )}
         {scan.away === "link" && (
-          <button type="button" className="toggle small" data-scan-back {...keep} onClick={scan.back}
-                  title="Вернуться к развороту, на котором шёл набор">↩ к набору</button>
+          // Залита цветом и названа целиком (долг п. 27, Олег и Нинель
+          // 26.11.2026: «не приметна»); рамка блока — того же цвета.
+          <button type="button" className="toggle small scanback" data-scan-back {...keep} onClick={scan.back}
+                  title="Вернуться к развороту, на котором шёл набор">↩ вернуться к набору</button>
         )}
         <span className="scantools">
           <button type="button" className="toggle small" data-scan-width disabled={!loaded} {...keep}
@@ -1440,7 +1494,7 @@ export function ScanWindow() {
       file: count > 0 && !sync.missing ? sync.files[index] : null,
       url: (name) => sheetUrl(sync.dir, sync.sep, name),
       kind: sync.kind, bad: sync.bad, setKind: (k) => act({ kind: "sheets", value: k }),
-      step: (by) => act({ kind: "step", by }), goTo: (i) => act({ kind: "goto", index: i }),
+      step: (by) => act({ kind: "step", by }), goTo: (i, typed) => act({ kind: "goto", index: i, typed }),
       show: () => "ok", pickDir: () => act({ kind: "pick" }), askDir: () => undefined, current: () => null,
       peek: () => undefined, back: () => act({ kind: "back" }), away: sync.away, visiting: sync.visiting ?? null, onTurn: () => () => undefined,
       keepPlace: sync.keepPlace, setKeepPlace: (v) => act({ kind: "keep", on: v }),

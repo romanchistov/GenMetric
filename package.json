@@ -1,7 +1,7 @@
 {
   "name": "genmetric",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "Индексатор метрических книг",
   "license": "GPL-3.0-or-later",

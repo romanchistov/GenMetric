@@ -14,6 +14,7 @@ import { dirtyForms } from "./dirty";
 import { FIELDS } from "./focus";
 import ArchiveBlock from "./ArchiveBlock";
 import AliasesBlock from "./AliasesBlock";
+import PlacesBlock from "./PlacesBlock";
 import CleanupBlock from "./CleanupBlock";
 import FindReplaceBlock from "./FindReplaceBlock";
 import WivesBlock from "./WivesBlock";
@@ -467,6 +468,8 @@ export default function App() {
           <FindReplaceBlock onOpenEntry={openEntry} />
           {/* Запомненные написания имён и отчеств (задача 15, Роман 20.11.2026). */}
           <AliasesBlock />
+          {/* Справочник населённых пунктов (задача 9, Роман 11.11.2026). */}
+          <PlacesBlock />
           {/* Фамилии жён по мужьям (Роман 12.10.2026, спека 2026-10-20-familii-zhyon). */}
           <WivesBlock onOpenEntry={openEntry} />
 

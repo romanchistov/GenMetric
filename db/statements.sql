@@ -328,6 +328,23 @@ SELECT id, name FROM place WHERE name_norm = :name_norm
  ORDER BY (full_location IS NULL OR trim(full_location) = ''),
           (np_type IS NULL OR trim(np_type) = ''), (origin = 'archive'), id LIMIT 1;
 
+-- @place_directory
+-- Справочник населённых пунктов (задача 9, 26.11.2026): одна строка на
+-- название — лучшая по правилу place_find; записей — по всем строкам с этим
+-- названием (двойники одного пункта), одним проходом.
+WITH uses AS (
+  SELECT q.name_norm, count(*) AS n
+    FROM person_mention m JOIN place q ON q.id = m.place_id
+   GROUP BY q.name_norm
+)
+SELECT p.name, p.np_type, p.volost, p.uyezd, p.guberniya, p.familio_url, coalesce(u.n, 0)
+  FROM place p LEFT JOIN uses u ON u.name_norm = p.name_norm
+ WHERE p.id = (SELECT x.id FROM place x WHERE x.name_norm = p.name_norm
+                ORDER BY (x.full_location IS NULL OR trim(x.full_location) = ''),
+                         (x.np_type IS NULL OR trim(x.np_type) = ''), (x.origin = 'archive'), x.id
+                LIMIT 1)
+ ORDER BY p.name_norm;
+
 -- @place_insert
 -- Населённый пункт заводится по первому упоминанию — запасной путь, если
 -- карточка (place_save) почему-то не открылась и НП дошёл до сохранения

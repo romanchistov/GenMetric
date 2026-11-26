@@ -16,6 +16,7 @@ pub mod import_familio;
 pub mod merge;
 pub mod parish;
 pub mod pdf;
+pub mod places;
 pub mod place_merge;
 pub mod records;
 pub mod replace;

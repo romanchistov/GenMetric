@@ -668,6 +668,12 @@ fn alias_save(app: State<App>, kind: String, form: String, target: Option<String
     })
 }
 
+/// Справочник населённых пунктов на «О программе» (задача 9).
+#[tauri::command]
+fn place_directory(app: State<App>) -> Result<Vec<genmetric_core::places::PlaceRow>, String> {
+    with_conn(&app, "Справочник населённых пунктов", genmetric_core::places::directory)
+}
+
 /// «Запомненные написания» на «О программе» (задача 15): все соответствия.
 #[tauri::command]
 fn alias_list(app: State<App>) -> Result<Vec<genmetric_core::aliases::Alias>, String> {
@@ -3235,6 +3241,7 @@ fn main() {
             dict_search,
             alias_save,
             alias_list,
+            place_directory,
             alias_remove,
             place_check,
             place_save,

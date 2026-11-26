@@ -1215,6 +1215,8 @@ def pdf_tiff_scans(driver, root, scan_attr):
         "(async () => {"
         "  const ids = [];"
         "  const keep = (r) => { ids.push(r.id); return r; };"
+        "  let got, failed = null;"
+        "  try {"
         "  keep(await call('entry_save', {entry: birth(91, 5, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
         "    P('mother', 30, 'Анна', 'Петрова', null, 'Ж', place))}));"
         "  keep(await call('entry_save', {entry: birth(90, 3, P('father', 20, 'Аким', 'Карпов', 'Тестов', 'М', place),"
@@ -1226,13 +1228,16 @@ def pdf_tiff_scans(driver, root, scan_attr):
         "  const one = await call('suggest_person', {prefix: 'Савва Ильин Тестов', limit: 6, gender: 'М', preferInfant: false,"
         "    keepWifeRank: false, wives: true});"
         "  const list = await call('entry_list', {section: 1, year: 1897, last: false});"
-        "  const mine = list.filter((e) => e.page === '77').map((e) => [e.no_male, e.book]);"
-        # Свои записи — убрать: следующие шаги (продолжить с места после
-        # перезапуска, «Набрано», скан последней записи) их видеть не должны
-        # (ревьюер 26.11.2026).
+        "  got = {two, one, list: list.filter((e) => e.page === '77').map((e) => [e.no_male, e.book])};"
+        "  } catch (e) { failed = String(e); }"
+        # Свои записи — убрать и при ошибке посреди шага: следующие шаги
+        # (продолжить с места после перезапуска, «Набрано», скан последней
+        # записи) их видеть не должны (ревьюер 26.11.2026).
         "  for (const id of ids) await call('entry_delete', {id});"
         "  const after = await call('entry_list', {section: 1, year: 1897, last: false});"
-        "  return {two, one, list: mine, left: after.filter((e) => e.page === '77').length, saved: ids.length};"
+        "  const left = after.filter((e) => e.page === '77').length;"
+        "  if (failed) return {error: failed, left};"
+        "  return {...got, left, saved: ids.length};"
         "})().then(done, (e) => done({error: String(e)}));")
     check("подсказка отца: команды отвечают без ошибки", "error" not in fathers, str(fathers)[:400])
     if "error" not in fathers:

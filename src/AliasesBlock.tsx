@@ -86,8 +86,8 @@ export default function AliasesBlock() {
             <tbody>
               {shown.slice(0, SHOWN).map((a) => (
                 <tr key={`${a.kind}|${a.form_norm}`} data-alias={a.form}>
-                  <td>«{a.form}» → {a.target ? `«${a.target}»` : a.kind === "patr" ? "не отчество" : "новое имя"}</td>
-                  <td className="fieldhint">{a.kind === "patr" ? "отчество" : "имя"}</td>
+                  <td>{a.target ? `«${a.form}» → «${a.target}»` : `«${a.form}» — ${a.kind === "patr" ? "не отчество" : "новое имя"}`}</td>
+                  <td className="fieldhint">{a.target ? (a.kind === "patr" ? "отчество" : "имя") : ""}</td>
                   <td>
                     <button type="button" className="linkish" data-alias-change onClick={() => { setNote(null); setEditing(a); }}>
                       Изменить

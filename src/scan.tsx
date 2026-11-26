@@ -600,12 +600,15 @@ export function ScanProvider({ year, section, ready, children }: { year: number 
       goTo: (i, typed) => {
         const wasAway = away !== null;
         if (away === "link" && !visitBase.current) settle();
-        go(i);
+        // Номер из окна скана посчитан по его списку — обрезаем по своему
+        // (ревьюер 26.11.2026: иначе «Стр.» ушла бы дальше кадра).
+        const to = Math.min(Math.max(0, count - 1), Math.max(0, i));
+        go(to);
         // Номер набран руками — страница формы идёт за ним, как если бы до
         // кадра долистали стрелками (п. 29): по шагу на кадр.
-        if (typed && i !== at && !wasAway && !loading.current) {
-          const by: 1 | -1 = i > at ? 1 : -1;
-          for (let k = Math.abs(i - at); k > 0; k--) turnListeners.current.forEach((fn) => fn(by));
+        if (typed && to !== at && !wasAway && !loading.current) {
+          const by: 1 | -1 = to > at ? 1 : -1;
+          for (let k = Math.abs(to - at); k > 0; k--) turnListeners.current.forEach((fn) => fn(by));
         }
       },
       show: (name, entryYear) => {
@@ -1113,6 +1116,9 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
   // курсор из поля формы не уходит. Esc — на перехвате окна: дальше он не
   // идёт (не закрывает экран и не трогает поле).
   const [fileMenu, setFileMenu] = useState(false);
+  // Меню — под подписью: её край в полосе панели (меню вне подписи, иначе
+  // обрезалось бы вместе с длинным именем).
+  const [fileMenuLeft, setFileMenuLeft] = useState(0);
   const fileShown = count > 0 && !scan.missing && scan.file !== null && scan.dir !== null;
   useEffect(() => { setFileMenu(false); }, [scan.file, scan.dir]);
   useEffect(() => {
@@ -1194,7 +1200,8 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
               <b> из {count}</b> ·{" "}
               {fileShown ? (
                 <button type="button" className="scanfile" data-scan-file-menu {...keep} aria-haspopup="menu" aria-expanded={fileMenu}
-                        onClick={() => setFileMenu((v) => !v)} title="Показать в папке или открыть во внешней программе">
+                        onClick={(e) => { setFileMenuLeft(e.currentTarget.offsetLeft); setFileMenu((v) => !v); }}
+                        title="Показать в папке или открыть во внешней программе">
                   {sheetLabel(scan.file ?? "")}
                 </button>
               ) : sheetLabel(scan.file ?? "")}
@@ -1202,7 +1209,7 @@ export function ScanPane({ windowed = false, onView }: { windowed?: boolean; onV
           ) : "скан"}
         </span>
         {fileMenu && fileShown && (
-          <div className="scanfilemenu" role="menu" data-scan-file-items>
+          <div className="scanfilemenu" role="menu" data-scan-file-items style={{ left: fileMenuLeft }}>
             <button type="button" role="menuitem" data-scan-reveal {...keep} onClick={() => fileAct("scan_reveal")}>Показать в папке</button>
             <button type="button" role="menuitem" data-scan-open-external {...keep} onClick={() => fileAct("scan_open_external")}>Открыть во внешней программе</button>
           </div>

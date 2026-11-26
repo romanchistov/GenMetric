@@ -1535,7 +1535,7 @@ def incident_20261014_stranica_i_dovodka():
     check("страница за сканом: листание на один файл и номер, набранный руками, с разворота набора",
           # С 24.11.2026 (задача 3) — и не пока место вкладки читается.
           "if (to !== at && !wasAway && !loading.current) turnListeners.current.forEach((fn) => fn(by));" in scan
-          and "if (typed && i !== at && !wasAway && !loading.current) {" in go_to
+          and "if (typed && to !== at && !wasAway && !loading.current) {" in go_to
           and "if (busy || !file || !fn || frozen.current) return;" in scan
           and "root.current.offsetParent === null" in scan)
     forms = [read(f"src/{f}.tsx") for f in ("BirthForm", "MarriageForm", "DeathForm")]
@@ -2879,7 +2879,7 @@ def incident_20261126_str_za_nomerom_kadra():
     check("набранный номер кадра — goTo с отметкой «набран руками»",
           "scan.goTo(Math.min(count, n) - 1, true);" in scan)
     check("goTo с отметкой зовёт подписчиков листания по шагу на кадр",
-          "for (let k = Math.abs(i - at); k > 0; k--) turnListeners.current.forEach((fn) => fn(by));" in scan)
+          "for (let k = Math.abs(to - at); k > 0; k--) turnListeners.current.forEach((fn) => fn(by));" in scan)
     check("отдельное окно скана передаёт отметку в главное",
           'goTo: (i, typed) => act({ kind: "goto", index: i, typed })' in scan
           and 'case "goto": s.goTo(a.index, a.typed); break;' in scan)

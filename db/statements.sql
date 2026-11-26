@@ -331,9 +331,10 @@ SELECT id, name FROM place WHERE name_norm = :name_norm
 -- @place_directory
 -- Справочник населённых пунктов (задача 9, 26.11.2026): одна строка на
 -- название — лучшая по правилу place_find; записей — по всем строкам с этим
--- названием (двойники одного пункта), одним проходом.
+-- названием (двойники одного пункта), одним проходом; запись с отцом и
+-- матерью из одного пункта — одна (как place_merge_uses).
 WITH uses AS (
-  SELECT q.name_norm, count(*) AS n
+  SELECT q.name_norm, count(DISTINCT m.entry_id) AS n
     FROM person_mention m JOIN place q ON q.id = m.place_id
    GROUP BY q.name_norm
 )

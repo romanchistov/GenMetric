@@ -2937,6 +2937,23 @@ def incident_20261126_kolesom_sdvigaet_stranicu():
           "const room = window.innerHeight - (box.top + window.scrollY) - below;" in fill)
 
 
+def incident_20261126_spravochnik_pereimenovanie():
+    """Ревьюер 26.11.2026 (задача 9, до выкладки): карточка пункта из
+    «Справочника населённых пунктов» переименовывала и объединяла пункт, не
+    сообщая формам. Формы во время «О программе» только скрыты; недонабранная
+    запись со старым названием НП при сохранении молча завела бы пустой пункт
+    (тот же класс, что проверяющий 25.09.2026 в PersonBlock).
+
+    Защита: `PlacesBlock` шлёт `PLACE_RENAMED` и после сохранения, и после
+    объединения — как `PersonBlock` и `CaseHeader`.
+    """
+    block = strip_comments(read("src/PlacesBlock.tsx"))
+    check("справочник сообщает формам о переименовании и объединении пункта",
+          "new CustomEvent(PLACE_RENAMED" in block
+          and "onSaved={(saved) => { renamed(card.name, saved);" in block
+          and "onMerged={(kept, dropped) => { renamed(dropped, kept);" in block)
+
+
 def incident_20261126_polosa_uezzhaet():
     """Роман 26.11.2026 (Бэклог р. 3 п. 32): жёлтая полоса «У 1905 года уже
     есть дело с другими реквизитами» — «не закреплено сверху и становится не
@@ -2959,6 +2976,7 @@ def incident_20261126_polosa_uezzhaet():
 
 
 ИНЦИДЕНТЫ = [
+    incident_20261126_spravochnik_pereimenovanie,
     incident_20261126_polosa_uezzhaet,
     incident_20261126_kolesom_sdvigaet_stranicu,
     incident_20261126_skan_pod_prokrutkoj,

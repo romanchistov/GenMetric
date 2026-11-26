@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { report } from "./errors";
 import Modal from "./Modal";
 import PlaceCard, { type PlaceInfo } from "./PlaceCard";
+import { PLACE_RENAMED } from "./PersonBlock";
 import { entriesWord } from "./dossier";
 
 /**
@@ -28,6 +29,10 @@ export default function PlacesBlock() {
   const [query, setQuery] = useState("");
   const [gapsOnly, setGapsOnly] = useState(false);
   const [card, setCard] = useState<PlaceInfo | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  /** Прокрутка списка: окно справочника на время карточки убирается, после
+   *  неё список встаёт на то же место (проверяющий 26.11.2026). */
+  const scrolled = useRef(0);
 
   async function load() {
     try {
@@ -40,13 +45,26 @@ export default function PlacesBlock() {
   useEffect(() => { void load(); }, []);
 
   async function edit(name: string) {
+    setNote(null);
     try {
       const info = await invoke<PlaceInfo | null>("place_get", { name });
-      if (!info) { await load(); return; }
+      if (!info) {
+        setNote(`Пункта «${name}» уже нет под этим названием — список обновлён.`);
+        await load();
+        return;
+      }
       setCard(info);
     } catch (e) {
       report(`Не удалось открыть карточку «${name}»`, e);
     }
+  }
+
+  /** Название ушло (переименовали, объединили) — всем формам: формы живут
+   *  скрытыми, пока открыто «О программе», и недонабранная запись со старым
+   *  названием при сохранении завела бы пустой пункт заново (ревьюер
+   *  26.11.2026; так же делают PersonBlock и CaseHeader). */
+  function renamed(oldName: string, newName: string) {
+    if (oldName !== newName) window.dispatchEvent(new CustomEvent(PLACE_RENAMED, { detail: { oldName, newName } }));
   }
 
   /** Карточка закрыта — снова справочник, строки свежие. */
@@ -82,11 +100,14 @@ export default function PlacesBlock() {
               {" "}только с пустыми полями ({gaps})
             </label>
           </div>
+          {note && <p className="hint" data-places-note>{note}</p>}
           {shown.length === 0 && <p className="hint" data-places-empty>{all.length ? "Ничего не найдено." : "Пунктов пока нет."}</p>}
           {/* Окно не шире колонки программы — строка в два яруса, а не
               таблица в семь столбцов. Пустое поле названо словами. */}
           {shown.length > 0 && (
-            <ul className="placeslist" data-places-list>
+            <ul className="placeslist" data-places-list
+                ref={(el) => { if (el && el.dataset.restored !== "1") { el.scrollTop = scrolled.current; el.dataset.restored = "1"; } }}
+                onScroll={(e) => { scrolled.current = e.currentTarget.scrollTop; }}>
               {shown.map((r) => (
                 <li key={r.name} data-place={r.name} className={r.gaps ? "gaps" : ""}
                     onClick={() => void edit(r.name)}>
@@ -118,8 +139,8 @@ export default function PlacesBlock() {
           existing={card}
           defaults={{ guberniya: "", uyezd: "" }}
           onPick={back}
-          onSaved={back}
-          onMerged={back}
+          onSaved={(saved) => { renamed(card.name, saved); back(); }}
+          onMerged={(kept, dropped) => { renamed(dropped, kept); back(); }}
           onCancel={back}
         />
       )}

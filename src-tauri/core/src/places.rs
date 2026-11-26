@@ -16,7 +16,7 @@ pub struct PlaceRow {
     pub uyezd: Option<String>,
     pub guberniya: Option<String>,
     pub familio_url: Option<String>,
-    /// Упоминаний людей с этим пунктом — по всем строкам с тем же названием.
+    /// Записей, где у кого-то этот пункт, — по всем строкам с тем же названием.
     pub uses: i64,
     /// Пусто хоть одно из: тип, волость, уезд, губерния, ссылка Familio.
     pub gaps: bool,
@@ -71,15 +71,17 @@ mod tests {
                  VALUES (903, 'Бухарино', 'бухарино', 'с.', 'Буйский', 'Костромская', 'с. Бухарино, Буйский уезд', 'user');
             INSERT INTO mk_case (id, year) VALUES (1, 1905);
             INSERT INTO entry (id, case_id, section) VALUES (1, 1, 1);
+            INSERT INTO entry (id, case_id, section) VALUES (2, 1, 1);
             INSERT INTO person_mention (entry_id, role_code, sort_order, place_id) VALUES (1, 'father', 1, 901);
             INSERT INTO person_mention (entry_id, role_code, sort_order, place_id) VALUES (1, 'mother', 2, 902);
+            INSERT INTO person_mention (entry_id, role_code, sort_order, place_id) VALUES (2, 'father', 1, 902);
         ").unwrap();
         let rows = directory(&conn).unwrap();
         let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["Бухарино", "Шишкино"], "по одному на название, по алфавиту");
         let sh = &rows[1];
         assert_eq!(sh.volost.as_deref(), Some("Нежитинская"), "лучшая строка — полная");
-        assert_eq!(sh.uses, 2, "записи — по обоим двойникам");
+        assert_eq!(sh.uses, 2, "записи — по обоим двойникам, отец и мать одной записи — одна");
         assert!(!sh.gaps, "всё заполнено");
         assert!(rows[0].gaps, "у Бухарино нет волости и ссылки");
         assert_eq!(rows[0].uses, 0);

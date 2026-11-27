@@ -24,6 +24,7 @@ use crate::statement;
 use crate::text::{normalize, normalize_name, normalize_words};
 
 mod family;
+mod synonyms;
 /// Словарь отчеств (`patronymics`): имя → мужское и женское.
 pub use family::Patronymics;
 use family::Person;
@@ -419,7 +420,6 @@ fn load(conn: &Connection) -> Result<Vec<Row>, String> {
                 mother_io: String::new(),
                 person: usize::MAX,
             };
-            row.key = row.modern().iter().filter(|s| !s.is_empty()).map(|s| normalize_name(s)).collect::<Vec<_>>().join(" ");
             row.words = [&row.first, &row.patr, &row.surname, &row.first_modern, &row.patr_modern]
                 .iter().filter(|s| !s.is_empty()).map(|s| normalize_name(s)).collect();
             // Причт — с селом церкви из «Дела», только при чтении: в запись и
@@ -434,8 +434,14 @@ fn load(conn: &Connection) -> Result<Vec<Row>, String> {
                 row.words.push(normalize_name(&maiden));
             }
             row.maiden = maiden;
-            let [first, patr, _] = row.modern();
-            (row.first_n, row.patr_n) = (normalize_name(first), normalize_name(patr));
+            // Синонимы имён (задача 13): имя и отчество — к представителю
+            // группы, только для сравнения; ключ персоны — из них.
+            let syn = synonyms::synonyms();
+            let female = row.female();
+            let [first, patr, surname] = row.modern().map(normalize_name);
+            (row.first_n, row.patr_n) = (syn.first(&first, female), syn.patronymic(&patr));
+            row.key = [row.first_n.clone(), row.patr_n.clone(), surname]
+                .into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
             row.sur_base = if row.surname.is_empty() { String::new() } else { crate::records::surname_pair(&row.surname).0 };
             Ok(row)
         })
@@ -444,6 +450,18 @@ fn load(conn: &Connection) -> Result<Vec<Row>, String> {
 }
 
 impl Row {
+    /// Пол для синонимов имени: записанный, иначе по роли.
+    fn female(&self) -> Option<bool> {
+        match self.gender.as_deref() {
+            Some("Ж") => Some(true),
+            Some("М") => Some(false),
+            _ => match self.role.trim_end_matches(|c: char| c.is_ascii_digit()) {
+                "mother" | "bride" => Some(true),
+                "father" | "groom" => Some(false),
+                _ => None,
+            },
+        }
+    }
     fn modern(&self) -> [&str; 3] {
         [if self.first_modern.is_empty() { &self.first } else { &self.first_modern },
          if self.patr_modern.is_empty() { &self.patr } else { &self.patr_modern },

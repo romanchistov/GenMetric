@@ -85,9 +85,10 @@ fn complete(row: &mut Row, patr: Option<String>, surname: Option<String>, place:
     let own_surname = !row.surname.is_empty();
     let surname = if own_surname { Some(row.surname.clone()) } else { surname };
     let words: Vec<String> = [Some(first), patr.clone(), surname.clone()].into_iter().flatten().filter(|s| !s.is_empty()).collect();
+    let syn = super::synonyms::synonyms();
     if let Some(p) = &patr {
-        row.patr_n = normalize_name(p);
-        row.words.push(row.patr_n.clone());
+        row.words.push(normalize_name(p));
+        row.patr_n = syn.patronymic(&normalize_name(p));
     }
     if let Some(s) = &surname {
         row.sur_base = surname_pair(s).0;
@@ -95,7 +96,16 @@ fn complete(row: &mut Row, patr: Option<String>, surname: Option<String>, place:
             row.words.push(normalize_name(s));
         }
     }
-    row.key = words.iter().map(|w| normalize_name(w)).collect::<Vec<_>>().join(" ");
+    // Ключ — со сведёнными именем и отчеством (задача 13), как в search::load.
+    let female = row.female();
+    row.key = words.iter().enumerate().map(|(i, w)| {
+        let w = normalize_name(w);
+        match i {
+            0 => syn.first(&w, female),
+            1 if patr.is_some() => row.patr_n.clone(),
+            _ => w,
+        }
+    }).collect::<Vec<_>>().join(" ");
     row.full = Some(words.join(" "));
     if row.place.is_empty() && !place.is_empty() {
         row.place = place.to_string();
@@ -133,7 +143,9 @@ pub(super) fn derive(rows: &mut [Row], dict: &Patronymics) {
                 "deceased" if rows[i].patr_n.is_empty() && (rel_father.is_some() || rel_mother.is_some()) => (rel_father, rel_mother),
                 _ => continue,
             };
-            let patr = f.and_then(|f| patronymic(dict, &rows[f].first_n, female));
+            // Отчество — от записанного имени отца, не от сведённого
+            // синонимами (задача 13): у Егора сын — Егорович, не Георгиевич.
+            let patr = f.and_then(|f| patronymic(dict, &normalize_name(rows[f].modern()[0]), female));
             let surname = f.map(|f| rows[f].surname.clone()).filter(|s| !s.is_empty()).map(|s| gendered(&s, female));
             let place = f.map(|f| rows[f].place.clone()).filter(|p| !p.is_empty())
                 .or_else(|| m.map(|m| rows[m].place.clone())).unwrap_or_default();

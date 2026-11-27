@@ -2553,7 +2553,9 @@ def incident_20261017_semya_celikom_2():
     check("тёзок делят только разные имена супругов: разное отчество жены — описка, не вторая жена",
           "fn same_spouse(" in family and "parts.iter_mut().find(|part| same_spouse(" in family)
     check("варианты имени супруга («Васса» — «Василиса») и то же отчество — один супруг; безфамильный сливается только с единственным (ревьюер 17.10.2026)",
-          "a.first_c == b.first_c) || (!a.patr_n.is_empty() && a.patr_n == b.patr_n)" in family
+          # С 27.11.2026 (задача 13) к вариантам словаря добавлены синонимы (first_n).
+          "(!a.first_c.is_empty() && a.first_c == b.first_c) || (!a.first_n.is_empty() && a.first_n == b.first_n)" in family
+          and "|| (!a.patr_n.is_empty() && a.patr_n == b.patr_n);" in family
           and "[b] => { join(&mut parent, &mut ranges, a, b); }" in family and 'statement("search_name_links")' in read("src-tauri/core/src/search.rs"))
     check("НП родственника, поставленный сохранением, на правке не застывает (ревьюер и проверяющий 17.10.2026)",
           'rel?.place && side?.place && rel.place === side.place ? { ...r, place: "" } : r' in read("src/MarriageForm.tsx"))

@@ -8,6 +8,9 @@ HTML со встроенным `const DATA = {...}` — `docs` (документ
 
     python3 db/tools/make_name_synonyms.py <выгрузка.html>
 
+Выгрузка в репозиторий не входит: она лежит в рабочей папке Романа
+(`_reference/словарь-имен-RusNames.html`); результат — CSV — в репозитории.
+
 Пишет db/name_synonyms.csv (связи) и db/name_patronymics.csv (отчества имён
 групп). Программа вшивает оба файла (`search/synonyms.rs`).
 """

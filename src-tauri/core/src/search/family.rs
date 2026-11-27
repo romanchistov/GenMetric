@@ -478,7 +478,9 @@ fn same_human(a: &Row, b: &Row) -> bool {
 fn same_spouse(a: &Row, b: &Row) -> bool {
     let woman = |r: &Row| matches!(r.role.as_str(), "mother" | "bride") || r.gender.as_deref() == Some("Ж");
     let fits = |x: &str, y: &str| x == y || x.is_empty() || y.is_empty();
-    let name = (!a.first_c.is_empty() && a.first_c == b.first_c) || (!a.patr_n.is_empty() && a.patr_n == b.patr_n);
+    // Имя то же по вариантам словаря или по синонимам (задача 13).
+    let name = (!a.first_c.is_empty() && a.first_c == b.first_c) || (!a.first_n.is_empty() && a.first_n == b.first_n)
+        || (!a.patr_n.is_empty() && a.patr_n == b.patr_n);
     name && (woman(a) || woman(b) || fits(&a.sur_base, &b.sur_base))
 }
 

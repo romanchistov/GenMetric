@@ -271,7 +271,11 @@ impl Index {
             }
         }
         for row in rows.iter_mut() {
-            row.first_c = roots.get(&row.first_n).cloned().unwrap_or_else(|| row.first_n.clone());
+            // Корень вариантов — от записанного имени: сведённое синонимами
+            // (задача 13) может не входить в словарь, и связь вариантов
+            // терялась бы (ревьюер 27.11.2026).
+            let raw = normalize_name(row.modern()[0]);
+            row.first_c = roots.get(&raw).cloned().unwrap_or(raw);
         }
         family::derive(&mut rows, &dict);
         let (persons, spouse) = family::build(&mut rows);

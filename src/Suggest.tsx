@@ -42,6 +42,8 @@ type Props = {
   /** Отбор строк перечня: «Чей родств.» — только роли своего раздела
    *  (долг п. 28, Роман 26.11.2026). */
   only?: (value: string) => boolean;
+  /** Год формы: у званий — звания записей ± 1 год первыми (задача 12). */
+  year?: number | null;
 };
 
 const TIER_TITLE: Record<number, string> = {
@@ -63,7 +65,7 @@ const TIER_TITLE: Record<number, string> = {
  * где переход шёл клавишей «вниз».
  */
 const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
-  { label, kind, value, onChange, placeholder, hint, browse, onLeave, action, fix, lock, skipFilled, autofocus, auto, only },
+  { label, kind, value, onChange, placeholder, hint, browse, onLeave, action, fix, lock, skipFilled, autofocus, auto, only, year },
   ref,
 ) {
   const [items, setItems] = useState<Item[]>([]);
@@ -101,7 +103,7 @@ const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
   /** Весь перечень целиком: своё и частое — сверху, остальное по алфавиту. */
   function browseAll() {
     const mine = ++seq.current;
-    invoke<Item[]>("suggest", { kind, prefix: "", limit: 200 })
+    invoke<Item[]>("suggest", { kind, prefix: "", limit: 200, year: year ?? null })
       .then((all) => {
         const rows = only ? all.filter((r) => only(r.value)) : all;
         if (mine !== seq.current) return;
@@ -134,7 +136,7 @@ const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
     // и перезапускает эффект — открытый по набору список пропадал бы.
     if (!byKeyboard) return;
     const mine = ++seq.current;
-    invoke<Item[]>("suggest", { kind, prefix: query, limit: only ? 32 : 8 })
+    invoke<Item[]>("suggest", { kind, prefix: query, limit: only ? 32 : 8, year: year ?? null })
       .then((all) => {
         const rows = only ? all.filter((r) => only(r.value)).slice(0, 8) : all;
         if (mine !== seq.current) return; // ответ на устаревший запрос

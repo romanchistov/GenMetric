@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { FormYear } from "./formyear";
 import { invoke } from "@tauri-apps/api/core";
 import Suggest from "./Suggest";
 import IofField, { type Parsed, type PersonHint } from "./IofField";
@@ -170,11 +171,11 @@ function ConfessionField({ label, value, onChange }: { label: string; value: str
 /** Самое частое звание роли и пола; ответ держится минуту — частоты меняются
  *  медленно, а спрашивают его на каждой записи у нескольких персон. */
 const rankCache = new Map<string, { at: number; value: Promise<string | null> }>();
-function rankDefault(role: string, gender: string): Promise<string | null> {
-  const key = `${role}|${gender}`;
+function rankDefault(role: string, gender: string, year: number | null): Promise<string | null> {
+  const key = `${role}|${gender}|${year ?? ""}`;
   const hit = rankCache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.value;
-  const value = invoke<string | null>("rank_default", { role, gender });
+  const value = invoke<string | null>("rank_default", { role, gender, year });
   rankCache.set(key, { at: Date.now(), value });
   // Ошибку и «ещё нет таких записей» не держим: первая же сохранённая запись
   // должна дать звание следующей.
@@ -378,6 +379,8 @@ export default function PersonBlock({
     else if (person.note) setNoteOpen(true);
   }, [person.iof, person.note]);
   const sex = gender ?? (person.parsed?.gender as "М" | "Ж" | undefined) ?? undefined;
+  // Год формы — звания записей ± 1 год первыми (задача 12).
+  const formYear = useContext(FormYear);
   const ranks = rankKind === "rank_clergy"
     ? "rank_clergy"
     : sex === "Ж" ? "rank_f" : "rank_m";
@@ -406,7 +409,7 @@ export default function PersonBlock({
     const replaceable = !now.rank || (ours !== null && now.rank === ours.rank && ours.sex !== sex);
     if (!sex || rankTouched.current || !replaceable) return;
     let alive = true;
-    rankDefault(defaultRank, sex)
+    rankDefault(defaultRank, sex, formYear)
       .then((rank) => {
         const p = latest.current;
         const mine = autoRank.current;
@@ -568,6 +571,7 @@ export default function PersonBlock({
         kind={ranks}
         value={person.rank}
         auto={rankAuto}
+        year={formYear}
         onChange={(rank) => {
           // Звание тронуто руками — подстановка по умолчанию больше не вмешивается.
           if (rank !== latest.current.rank) rankTouched.current = true;

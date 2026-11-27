@@ -787,6 +787,31 @@ SELECT trim(rank) FROM person_mention
  ORDER BY count(*) DESC, max(id) DESC
  LIMIT 1;
 
+-- @rank_default_years
+-- То же, но по записям дел ± 1 год от года формы (задача 12, Роман
+-- 27.11.2026: вариант А — без настройки; окно ± 1 год — по замеру на копиях
+-- его баз: Горелое 77 % → 82 %, Жары 69 % → 72 %). Нет таких записей —
+-- приходское rank_default.
+SELECT trim(m.rank) FROM person_mention m
+  JOIN entry e ON e.id = m.entry_id JOIN mk_case k ON k.id = e.case_id
+ WHERE m.role_code LIKE :role AND m.role_code <> 'deceased_relative'
+   AND trim(coalesce(m.rank, '')) <> ''
+   AND (:gender IS NULL OR m.gender = :gender)
+   AND k.year BETWEEN :year - 1 AND :year + 1
+ GROUP BY trim(m.rank)
+ ORDER BY count(*) DESC, max(m.id) DESC
+ LIMIT 1;
+
+-- @rank_years
+-- Звания пола в записях дел ± 1 год — в подсказке званий они идут первыми,
+-- по частоте в эти годы (задача 12). Причт — свой перечень, не здесь.
+SELECT trim(m.rank), count(*) FROM person_mention m
+  JOIN entry e ON e.id = m.entry_id JOIN mk_case k ON k.id = e.case_id
+ WHERE trim(coalesce(m.rank, '')) <> '' AND m.gender = :gender
+   AND m.role_code NOT LIKE 'clergy%'
+   AND k.year BETWEEN :year - 1 AND :year + 1
+ GROUP BY trim(m.rank);
+
 -- @surname_known
 -- Была ли такая фамилия в приходе — для отметки «такой фамилии ещё не было»
 -- (Роман 06.10.2026). Спрашивают сразу обе формы, мужскую и женскую: :a, :b.

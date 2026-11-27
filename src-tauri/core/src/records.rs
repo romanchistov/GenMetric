@@ -127,11 +127,54 @@ pub fn surname_pair(surname: &str) -> (String, String) {
 }
 
 /// Самое частое звание роли и пола в приходе; None — таких записей ещё нет.
-pub fn default_rank(conn: &Connection, role: &str, gender: Option<&str>) -> Result<Option<String>, String> {
+pub fn default_rank(conn: &Connection, role: &str, gender: Option<&str>, year: Option<i64>) -> Result<Option<String>, String> {
+    // Задача 12 (Роман 27.11.2026): сначала записи ± 1 год от года формы —
+    // однодворцы 1858 года и крестьяне 1914-го; нет их — весь приход.
+    if let Some(year) = year {
+        let near: Option<String> = conn.query_row(&statement("rank_default_years")?,
+                       rusqlite::named_params! { ":role": role, ":gender": gender, ":year": year }, |r| r.get(0))
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if near.is_some() {
+            return Ok(near);
+        }
+    }
     conn.query_row(&statement("rank_default")?,
                    rusqlite::named_params! { ":role": role, ":gender": gender }, |r| r.get(0))
         .optional()
         .map_err(|e| e.to_string())
+}
+
+/// Подсказка званий (задача 12): звания, что встречались в записях ± 1 год
+/// от года формы, — первыми, по частоте в эти годы; остальные — в прежнем
+/// порядке (по приходу). Пол — по перечню: `rank_m` — мужчины, `rank_f` —
+/// женщины; причт и прочие перечни не трогаются.
+pub fn rank_years_first<T>(conn: &Connection, kind: &str, year: i64, rows: Vec<T>,
+                           value: impl Fn(&T) -> &str) -> Result<Vec<T>, String> {
+    let gender = match kind {
+        "rank_m" => "М",
+        "rank_f" => "Ж",
+        _ => return Ok(rows),
+    };
+    let mut stmt = conn.prepare(&statement("rank_years")?).map_err(|e| e.to_string())?;
+    let mut near: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let found = stmt
+        .query_map(rusqlite::named_params! { ":gender": gender, ":year": year },
+                   |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(|e| e.to_string())?;
+    for row in found {
+        let (rank, n) = row.map_err(|e| e.to_string())?;
+        *near.entry(crate::text::normalize_words(&rank)).or_default() += n;
+    }
+    if near.is_empty() {
+        return Ok(rows);
+    }
+    let mut keyed: Vec<(i64, T)> = rows.into_iter()
+        .map(|r| (near.get(&crate::text::normalize_words(value(&r))).copied().unwrap_or(0), r))
+        .collect();
+    // Устойчивая сортировка: звания без записей в эти годы — в прежнем порядке.
+    keyed.sort_by_key(|(n, _)| std::cmp::Reverse(*n));
+    Ok(keyed.into_iter().map(|(_, r)| r).collect())
 }
 
 /// Звание матери в записи о рождении — оно же попадает в память персон.
@@ -1573,6 +1616,47 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    #[test]
+    fn rank_by_years() {
+        // Задача 12: звание по годам формы, без записей рядом — по приходу.
+        let seed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/seed.sqlite");
+        if !seed.exists() {
+            crate::seed_missing("тест звания по годам пропущен");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("genmetric-rank-years-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.sqlite");
+        std::fs::copy(&seed, &path).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        let mut sql = String::from("INSERT INTO mk_case (id, year) VALUES (1, 1858), (2, 1914);");
+        // 1858: два однодворца; 1914: пять крестьян — по приходу крестьяне чаще.
+        let mut id = 0;
+        for (case, rank, n) in [(1, "однодворец", 2), (2, "крестьянин", 5)] {
+            for _ in 0..n {
+                id += 1;
+                sql += &format!("INSERT INTO entry (id, case_id, section) VALUES ({id}, {case}, 1);
+                    INSERT INTO person_mention (entry_id, role_code, sort_order, gender, rank) VALUES ({id}, 'father', 1, 'М', '{rank}');");
+            }
+        }
+        conn.execute_batch(&sql).unwrap();
+        let rank = |year| default_rank(&conn, "father", Some("М"), year).unwrap();
+        assert_eq!(rank(Some(1858)).as_deref(), Some("однодворец"), "год формы");
+        assert_eq!(rank(Some(1859)).as_deref(), Some("однодворец"), "± 1 год");
+        assert_eq!(rank(Some(1915)).as_deref(), Some("крестьянин"));
+        assert_eq!(rank(Some(1890)).as_deref(), Some("крестьянин"), "рядом записей нет — по приходу");
+        assert_eq!(rank(None).as_deref(), Some("крестьянин"), "без года — по приходу");
+        let rows = vec!["крестьянин", "мещанин", "однодворецъ"];
+        assert_eq!(rank_years_first(&conn, "rank_m", 1858, rows.clone(), |r| r).unwrap(),
+                   ["однодворецъ", "крестьянин", "мещанин"], "в 1858 — однодворец первым (и в старой орфографии)");
+        assert_eq!(rank_years_first(&conn, "rank_m", 1914, rows.clone(), |r| r).unwrap(), rows);
+        assert_eq!(rank_years_first(&conn, "rank_f", 1858, rows.clone(), |r| r).unwrap(), rows, "женщин в 1858 нет");
+        assert_eq!(rank_years_first(&conn, "rank_clergy", 1858, rows.clone(), |r| r).unwrap(), rows);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Задача 5 (Роман 25.11.2026): жёны отца для строк подсказки — разные
     /// жёны раздельно, одна жена в разных написаниях — одна, с фамилией; жена
     /// чужого пункта не попадает; больше трёх — три. Имена выдуманы.
@@ -2195,9 +2279,9 @@ mod tests {
                 no_female: Some(i as i64 + 2), event_day: None, event_month: None, event_year: Some(1897),
                 rite_day: None, rite_month: None, rite_year: Some(1897), note: None, uncertain: None, scan_file: None, persons: people }).unwrap();
         }
-        assert_eq!(default_rank(&conn, "godparent%", Some("Ж")).unwrap().as_deref(), Some("крестьянская девица"));
-        assert_eq!(default_rank(&conn, "godparent%", Some("М")).unwrap().as_deref(), Some("крестьянин"));
-        assert_eq!(default_rank(&conn, "witness%", Some("М")).unwrap(), None, "поручителей ещё нет — подставлять нечего");
+        assert_eq!(default_rank(&conn, "godparent%", Some("Ж"), None).unwrap().as_deref(), Some("крестьянская девица"));
+        assert_eq!(default_rank(&conn, "godparent%", Some("М"), None).unwrap().as_deref(), Some("крестьянин"));
+        assert_eq!(default_rank(&conn, "witness%", Some("М"), None).unwrap(), None, "поручителей ещё нет — подставлять нечего");
         // Вероисповедание идёт в частоты; у набранного раньше — считается один
         // раз на приход, имеющиеся частоты не занижаются, строки шаблона Excel
         // в частоты не идут.

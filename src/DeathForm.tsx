@@ -1,4 +1,5 @@
 import DeleteEntry from "./DeleteEntry";
+import { FormYear } from "./formyear";
 import EntryReqs, { reqsText } from "./EntryReqs";
 import type { Case } from "./CaseHeader";
 import { SAVE_KEY } from "./keys";
@@ -1021,6 +1022,7 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
   const [witFolded, foldWit] = useFold("death_witnesses", "Свидетели", true);
 
   return (
+    <FormYear.Provider value={year}>
     <div onKeyDown={hotkeys} ref={root} className="death formroot">
       {/* Предохранитель «забытая страница» (Роман 07.10.2026): не останавливает
           набор и пропадает сам, когда страницу сменили. */}
@@ -1164,5 +1166,6 @@ export default function DeathForm({ mkCase, onSaved, workYear, openReq, onNewYea
         </section>
       )}
     </div>
+    </FormYear.Provider>
   );
 }

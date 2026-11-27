@@ -447,6 +447,8 @@ fn suggest(
     prefix: String,
     limit: Option<i64>,
     gender: Option<String>,
+    // Год формы — звания этих лет первыми (задача 12); у других перечней не нужен.
+    year: Option<i64>,
 ) -> Result<Vec<Suggestion>, String> {
     // Звания в книгах — в старой орфографии («крестьянинъ»): каждое слово
     // без конечного «ъ», с «і», «ѣ», «ѳ» по-современному (техдолг 23.09.2026).
@@ -477,7 +479,10 @@ fn suggest(
         // 19.11.2026 предел был 200, а у Романа уже 197 пунктов (Бэклог р. 2,
         // п. 1); 5000 — на порядок больше любого прихода. Копия — в шиме стенда.
         const PLACE_FIRST_LIMIT: i64 = 5000;
-        let first_limit = if kind == "place" { PLACE_FIRST_LIMIT } else { limit };
+        // Звания с годом формы — с запасом: звание, частое в эти годы, может
+        // не входить в первые по приходу (задача 12).
+        let by_years = year.filter(|_| kind == "rank_m" || kind == "rank_f");
+        let first_limit = if kind == "place" { PLACE_FIRST_LIMIT } else if by_years.is_some() { limit.max(200) } else { limit };
         let mut out = merge_case_twins(suggest_rows(conn, &sql, &kind, &pattern, first_limit, gendered, &gender)?);
         // Звания — ещё и по вхождению (Роман 12.10.2026: набрал «от» и хочет
         // увидеть «сын-отрок», а не только «отставной рядовой»). Сначала всё,
@@ -488,7 +493,9 @@ fn suggest(
         // 17.11.2026 (п. 159) — всегда, а не только когда строк мало: на «Го»
         // частое «с.Горелое» стояло ниже словарных «Гобино» и «Голчино».
         if let Some(inside) = genmetric_core::rank_inside_pattern(&kind, &pattern) {
-            if kind == "place" || (out.len() as i64) < limit {
+            // С годом формы — всегда: «государственный крестьянин» 1858 года
+            // на «кр» найдётся только по вхождению, а поднять его должно окно лет.
+            if kind == "place" || by_years.is_some() || (out.len() as i64) < limit {
                 // Ключи уже набранных — один раз (ревьюер 19.11.2026: см. merge_case_twins).
                 let mut have: std::collections::HashSet<String> =
                     out.iter().map(|r| genmetric_core::text::normalize(&r.value)).collect();
@@ -501,6 +508,9 @@ fn suggest(
         }
         if kind == "place" {
             out = genmetric_core::place_order(out, &prefix, |r| r.value.as_str(), |r| r.count);
+        }
+        if let Some(year) = by_years {
+            out = genmetric_core::records::rank_years_first(conn, &kind, year, out, |r| r.value.as_str())?;
         }
         out.truncate(limit as usize);
         if kind == "place" {
@@ -570,7 +580,7 @@ fn merge_case_twins(rows: Vec<Suggestion>) -> Vec<Suggestion> {
 /// Звание по умолчанию: самое частое в приходе у этой роли и пола.
 /// `role` — группа ролей формы: отец, жених, восприемник, поручитель.
 #[tauri::command]
-fn rank_default(app: State<App>, role: String, gender: Option<String>) -> Result<Option<String>, String> {
+fn rank_default(app: State<App>, role: String, gender: Option<String>, year: Option<i64>) -> Result<Option<String>, String> {
     let pattern = match role.as_str() {
         "father" => "father",
         "groom" => "groom",
@@ -582,7 +592,7 @@ fn rank_default(app: State<App>, role: String, gender: Option<String>) -> Result
         other => return Err(format!("Неизвестная роль для звания по умолчанию: {other}")),
     };
     with_conn(&app, "Звание по умолчанию", |conn| {
-        genmetric_core::records::default_rank(conn, pattern, gender.as_deref())
+        genmetric_core::records::default_rank(conn, pattern, gender.as_deref(), year)
     })
 }
 

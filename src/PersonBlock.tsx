@@ -389,7 +389,9 @@ export default function PersonBlock({
   // Появилось имя, а звание пусто — вписываем самое частое у этой роли и
   // пола. Стёрли или набрали своё — больше не трогаем, пока блок не очистят.
   // Сменился пол (восприемник «Иван» → «Мария») — подставленное меняется.
-  const autoRank = useRef<{ rank: string; sex: string } | null>(null);
+  // Сменился год формы (задача 12) — подставленное тоже меняется: звание
+  // считается по записям ± 1 год (проверяющий 27.11.2026).
+  const autoRank = useRef<{ rank: string; sex: string; year: number | null } | null>(null);
   const rankTouched = useRef(false);
   const hasIof = person.iof.trim() !== "";
   useEffect(() => {
@@ -406,7 +408,7 @@ export default function PersonBlock({
       return;
     }
     const ours = autoRank.current;
-    const replaceable = !now.rank || (ours !== null && now.rank === ours.rank && ours.sex !== sex);
+    const replaceable = !now.rank || (ours !== null && now.rank === ours.rank && (ours.sex !== sex || ours.year !== formYear));
     if (!sex || rankTouched.current || !replaceable) return;
     let alive = true;
     rankDefault(defaultRank, sex, formYear)
@@ -421,12 +423,12 @@ export default function PersonBlock({
           autoRank.current = null;
           return;
         }
-        autoRank.current = { rank, sex };
+        autoRank.current = { rank, sex, year: formYear };
         if (p.rank !== rank) push({ ...p, rank });
       })
       .catch((e) => report("Не удалось узнать самое частое звание", e));
     return () => { alive = false; };
-  }, [defaultRank, hasIof, sex]);
+  }, [defaultRank, hasIof, sex, formYear]);
 
   /** Простое поле без подсказок: Enter и стрелки ведут по форме дальше.
    *  Без этого блок персоны заканчивался тупиком — «Прим.» никуда не вело,

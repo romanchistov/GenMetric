@@ -496,11 +496,17 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
     ))
       .then((wife) => {
         if (!wife) return;
+        // Строку «жена …» человек выбрал сам — она заменяет мать и в записи
+        // на правке, и поверх набранной (Нинель 27.11.2026: «Упорно
+        // подставляет предыдущую»; Роман: «Да, заменять», Бэклог р. 3 п. 40).
+        // Жена по памяти и единственная жена (строка без «жена …», lone_wife)
+        // — только в пустое поле, как раньше: её человек в строке не видел.
+        const chosen = !!hint.wife && !hint.lone_wife;
         setMother((m) => ({
           ...m,
-          iof: m.iof || wife.iof,
+          iof: chosen ? wife.iof : m.iof || wife.iof,
           // «ИФ» жены — из памяти, если подставили её (Роман 15.10.2026).
-          nameSurname: m.iof ? m.nameSurname : !!wife.name_surname,
+          nameSurname: chosen || !m.iof ? !!wife.name_surname : m.nameSurname,
           place: wife.place ?? m.place,
           rank: wife.rank ?? m.rank,
         }));

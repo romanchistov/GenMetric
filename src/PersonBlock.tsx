@@ -301,6 +301,9 @@ export default function PersonBlock({
   // поправить («фокус не должен перескакивать поле НП»).
   const isNewEntry = useContext(FormNew);
   const pickedFromHint = useRef(false);
+  // Форма очистилась после сохранения (ИОФ пуст не через поле) — следующий
+  // человек снова «с нуля» (проверяющий 27.11.2026).
+  useEffect(() => { if (!person.iof.trim()) pickedFromHint.current = false; }, [person.iof]);
   function placeBySurname() {
     if (!isNewEntry || noPlace || compact || pickedFromHint.current || placeNow.current.trim()) return;
     const iof = latest.current.iof;

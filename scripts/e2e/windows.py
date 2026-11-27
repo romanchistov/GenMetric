@@ -1710,11 +1710,13 @@ def resumed(driver, wait):
     check("в окне годы 1886 и 1897", "1886" in years and "1897" in years, years.replace("\n", " | ")[:200])
     # Шаблон Familio ver.2026-10c (Роман 12.11.2026, п. 148): без согласия с
     # документами шаблон не заполняется — сначала три флажка.
-    click(driver, modal + "//button[normalize-space()='Выгрузить']")
-    body_text = lambda: driver.find_element(By.TAG_NAME, "body").text
-    check("без согласия выгрузка не идёт — полоса объясняет, окно на месте",
-          wait_until(lambda: "Нет согласия с документами Familio" in body_text(), 5)
-          and bool(driver.find_elements(By.XPATH, modal + "//div[@data-familio-consent]")))
+    # Нинель 27.11.2026 (п. 39): без согласий «Выгрузить» недоступна, под
+    # флажками — почему. Роман 27.11.2026 (п. 38): порядок записей — и в окне.
+    go = driver.find_element(By.XPATH, modal + "//button[normalize-space()='Выгрузить']")
+    check("без согласия «Выгрузить» недоступна, строка объясняет",
+          not go.is_enabled() and bool(driver.find_elements(By.XPATH, modal + "//p[@data-consent-missing]")))
+    check("в окне Familio — строка «Порядок записей»",
+          "Порядок записей" in driver.find_element(By.XPATH, modal + "//p[@data-familio-order]").text)
     for i in range(3):
         click(driver, modal + f"//input[@data-consent='{i}']")
     click(driver, modal + "//button[normalize-space()='Выгрузить']")

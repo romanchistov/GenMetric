@@ -2937,6 +2937,22 @@ def incident_20261126_kolesom_sdvigaet_stranicu():
           "const room = window.innerHeight - (box.top + window.scrollY) - below;" in fill)
 
 
+def incident_20261127_poryadok_v_okne_familio():
+    """Роман 27.11.2026 (ответы на 1.0.2, Бэклог р. 3 п. 38): «Не вижу в окне
+    где написано «Порядок записей: по книге»». Строка порядка стояла только в
+    панели выгрузки на «Деле», а в окне «Выгрузка в Familio», куда человек
+    смотрит перед выгрузкой, её не было.
+
+    Защита: строка с переключателем — и в окне Familio (`data-familio-order`);
+    шаг e2e и стенд s78 её ищут.
+    """
+    panel = strip_comments(read("src/ExportPanel.tsx"))
+    dialog = panel[panel.find("function FamilioDialog"):]
+    check("в окне «Выгрузка в Familio» — строка «Порядок записей» с переключателем",
+          "data-familio-order" in dialog and "<EntryOrderToggle bare byBook={byBook} onChange={onOrder} />" in dialog
+          and "data-familio-order" in read("scripts/e2e/windows.py"))
+
+
 def incident_20261126_spravochnik_pereimenovanie():
     """Ревьюер 26.11.2026 (задача 9, до выкладки): карточка пункта из
     «Справочника населённых пунктов» переименовывала и объединяла пункт, не
@@ -2976,6 +2992,7 @@ def incident_20261126_polosa_uezzhaet():
 
 
 ИНЦИДЕНТЫ = [
+    incident_20261127_poryadok_v_okne_familio,
     incident_20261126_spravochnik_pereimenovanie,
     incident_20261126_polosa_uezzhaet,
     incident_20261126_kolesom_sdvigaet_stranicu,

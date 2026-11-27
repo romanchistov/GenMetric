@@ -181,14 +181,18 @@ export default function ExportPanel({ mkCase }: { mkCase: Case }) {
       )}
       {open && (
         <FamilioDialog mkCase={mkCase} years={years} busy={busy === "familio"}
+                       byBook={byBook} onOrder={setByBook}
                        onClose={() => setOpen(false)} onExport={(ys, a) => void exportFamilio(ys, a)} />
       )}
     </div>
   );
 }
 
-function FamilioDialog({ mkCase, years, busy, onClose, onExport }: {
+function FamilioDialog({ mkCase, years, busy, byBook, onOrder, onClose, onExport }: {
   mkCase: Case; years: YearCount[]; busy: boolean;
+  /** Порядок записей — и в самом окне (Роман 27.11.2026, Бэклог р. 3 п. 38:
+   *  «Не вижу в окне где написано «Порядок записей: по книге»»). */
+  byBook: boolean; onOrder: (on: boolean) => void;
   onClose: () => void; onExport: (years: number[], about: About) => void;
 }) {
   const dated = years.filter((y): y is YearCount & { year: number } => y.year !== null);
@@ -304,6 +308,10 @@ function FamilioDialog({ mkCase, years, busy, onClose, onExport }: {
       <p className="hint">
         Будет выгружено: рождений {counts.b}, браков {counts.m}, смертей {counts.d}.
       </p>
+      <p className="exportorder" data-familio-order={byBook ? "book" : "input"}>
+        Порядок записей: <b>{byBook ? "по книге" : "по вводу"}</b>
+        <EntryOrderToggle bare byBook={byBook} onChange={onOrder} />
+      </p>
       <h3>Для Familio</h3>
       {field("Название", "title", "кратко, но информативно", () => setTitleTouched(true))}
       {field("Описание", "description", "под названием на сайте; пусто — как название")}
@@ -335,14 +343,16 @@ function FamilioDialog({ mkCase, years, busy, onClose, onExport }: {
           </label>
         ))}
       </div>
-      {consentAsk && !about.consent.every(Boolean) && (
-        <p className="reviewbusy" data-consent-missing>
-          Нет согласия с документами Familio: отметьте все три флажка — без них шаблон Familio не заполняется
-          и файл не примут.
+      {/* «Выгрузить» недоступна, пока не отмечены согласия, и строка под
+          флажками говорит почему (Нинель 27.11.2026, Бэклог р. 3 п. 39:
+          «кнопка Выгрузить доступна для клика, но ничего не делает»). */}
+      {!about.consent.every(Boolean) && (
+        <p className={consentAsk ? "reviewbusy" : "hint"} data-consent-missing>
+          Отметьте все три согласия — без них Familio файл не примет, и кнопка «Выгрузить» недоступна.
         </p>
       )}
       <div className="modalbar">
-        <button type="button" className="primary" disabled={busy} onClick={submit}>
+        <button type="button" className="primary" disabled={busy || !about.consent.every(Boolean)} onClick={submit}>
           {busy ? "Выгружаю…" : "Выгрузить"}
         </button>
         <button type="button" className="toggle" onClick={onClose}>Отмена</button>

@@ -732,6 +732,8 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
           )}
           <PersonBlock hidden={brideFolded} title="Невеста" person={bride} onChange={(p) => setBride((s) => ({ ...s, ...p }))}
                        gender="Ж" withConfession confessionLabel="Вероисп."
+                       // Как у жениха (Роман 27.11.2026: «Да, добавь невесте звание само»).
+                       defaultRank={fresh ? "bride" : undefined}
                        onPickPerson={pickInto(setBride)} {...common}
                        titleAfter={<FoldLink block="marriage_bride" onFold={() => foldBride(true)} />}
                        extra={spouseExtra(bride, setBride)} />

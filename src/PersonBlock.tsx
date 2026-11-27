@@ -135,7 +135,7 @@ type Props = {
    *  06.10.2026, вариант А). Не задано — не подставлять: мать, невеста,
    *  умерший и любая запись, открытая на правку. Родственникам жениха и
    *  невесты — с 09.10.2026 («relative»). */
-  defaultRank?: "father" | "groom" | "godparent" | "witness" | "relative";
+  defaultRank?: "father" | "groom" | "bride" | "godparent" | "witness" | "relative";
   /** Enter в ИОФ ведёт к первому пустому полю (мать в рождениях). */
   enterToEmpty?: boolean;
   /** Уход из поля ИОФ. Вернул название пункта — форма подставляет его в

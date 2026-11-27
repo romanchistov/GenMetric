@@ -584,6 +584,8 @@ fn rank_default(app: State<App>, role: String, gender: Option<String>, year: Opt
     let pattern = match role.as_str() {
         "father" => "father",
         "groom" => "groom",
+        // Роман 27.11.2026: «Да, добавь невесте звание само».
+        "bride" => "bride",
         "godparent" => "godparent%",
         "witness" => "witness%",
         // Родственники жениха и невесты (Роман 09.10.2026); родственника

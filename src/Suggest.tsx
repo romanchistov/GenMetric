@@ -103,7 +103,8 @@ const Suggest = forwardRef<HTMLInputElement, Props>(function Suggest(
   /** Весь перечень целиком: своё и частое — сверху, остальное по алфавиту. */
   function browseAll() {
     const mine = ++seq.current;
-    invoke<Item[]>("suggest", { kind, prefix: "", limit: 200, year: year ?? null })
+    // Пункты — весь справочник: их бывает больше 200 (Бэклог р. 3 п. 3).
+    invoke<Item[]>("suggest", { kind, prefix: "", limit: kind === "place" ? 5000 : 200, year: year ?? null })
       .then((all) => {
         const rows = only ? all.filter((r) => only(r.value)) : all;
         if (mine !== seq.current) return;

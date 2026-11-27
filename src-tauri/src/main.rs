@@ -460,7 +460,9 @@ fn suggest(
     // До 200: «весь перечень» по кнопке ▾ — губерний 115, архивов 59.
     // Проверяющий 21.09.2026: с пределом 50 из перечня пропадали «ЦГА Москвы»
     // и «Московская губерния», а тест этого не видел — он не ходит через Rust.
-    let limit = limit.unwrap_or(8).clamp(1, 200);
+    // Пункты по ▾ — весь справочник (Бэклог р. 3 п. 3: у Романа уже больше
+    // 200 пунктов, редкие по ▾ не были видны); предел — как PLACE_FIRST_LIMIT.
+    let limit = limit.unwrap_or(8).clamp(1, if kind == "place" { 5000 } else { 200 });
     with_conn(&app, &format!("Подсказки «{prefix}»"), |conn| {
         // Имена и отчества лежат в таблице форм, населённые пункты — в place,
         // остальные перечни — в lookup. Сами запросы в db/statements.sql:
@@ -1196,18 +1198,8 @@ fn suggest_infant(app: State<App>, prefix: String, limit: Option<i64>,
         let fathers = match prefix.trim().split_once(char::is_whitespace) {
             Some((_, rest)) if !rest.trim().is_empty() => {
                 // Отчество — второе слово: «Александр Васильев Ря» — тоже отец Василий.
-                let typed = normalize(rest.split_whitespace().next().unwrap_or_default());
-                let mut stmt = conn.prepare(&statement("patronymic_forms")?).map_err(|e| e.to_string())?;
-                let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?,
-                        [r.get::<_, Option<String>>(1)?, r.get(2)?, r.get(3)?, r.get(4)?])))
-                    .map_err(|e| e.to_string())?;
-                let mut names: Vec<String> = Vec::new();
-                for row in rows {
-                    let (name, forms) = row.map_err(|e| e.to_string())?;
-                    if forms.iter().flatten().any(|f| normalize(f).starts_with(&typed)) && !names.contains(&name) {
-                        names.push(name);
-                    }
-                }
+                let names = genmetric_core::records::fathers_by_patronymic(
+                    conn, rest.split_whitespace().next().unwrap_or_default())?;
                 (!names.is_empty()).then(|| serde_json::to_string(&names).unwrap_or_default())
             }
             _ => None,

@@ -177,6 +177,58 @@ pub fn rank_years_first<T>(conn: &Connection, kind: &str, year: i64, rows: Vec<T
     Ok(keyed.into_iter().map(|(_, r)| r).collect())
 }
 
+/// Имена отца (`name_norm` словаря), от которых образовано набранное
+/// отчество — для подсказки младенца («Александр Васильев» — отец Василий,
+/// п. 172). С 27.11.2026 (Бэклог р. 2 п. 2): дореформенное «Васильевъ»
+/// находит Василия (конечный «ъ» не мешает), и к имени добавляются его
+/// варианты по словарю — «Мария Иванова» находит дочь отца, записанного
+/// «Иоанн» (у Иоанна в словаре женское старое отчество «Иоаннова»).
+pub fn fathers_by_patronymic(conn: &Connection, typed: &str) -> Result<Vec<String>, String> {
+    let typed = crate::text::normalize_name(typed);
+    if typed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let s = |e: rusqlite::Error| e.to_string();
+    let mut stmt = conn.prepare(&statement("patronymic_forms")?).map_err(s)?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?,
+            [r.get::<_, Option<String>>(1)?, r.get(2)?, r.get(3)?, r.get(4)?])))
+        .map_err(s)?;
+    let mut names: Vec<String> = Vec::new();
+    for row in rows {
+        let (name, forms) = row.map_err(s)?;
+        if forms.iter().flatten().any(|f| crate::text::normalize_name(f).starts_with(&typed)) && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    if names.is_empty() {
+        return Ok(names);
+    }
+    // Варианты одного имени — в обе стороны (основа, вариант).
+    let mut links: Vec<(String, String)> = Vec::new();
+    let mut stmt = conn.prepare(&statement("search_name_links")?).map_err(s)?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?)))
+        .map_err(s)?;
+    for row in rows {
+        let (name, base, variant) = row.map_err(s)?;
+        let name = normalize(&name);
+        for other in base.iter().chain(variant.iter()).flat_map(|v| v.split(',')) {
+            let other = normalize(other.trim());
+            if !other.is_empty() && other != name {
+                links.push((name.clone(), other));
+            }
+        }
+    }
+    let first = names.clone();
+    for (a, b) in &links {
+        if first.contains(a) && !names.contains(b) {
+            names.push(b.clone());
+        } else if first.contains(b) && !names.contains(a) {
+            names.push(a.clone());
+        }
+    }
+    Ok(names)
+}
+
 /// Звание матери в записи о рождении — оно же попадает в память персон.
 pub const WIFE_RANK: &str = "законная жена его";
 
@@ -1615,6 +1667,25 @@ mod tests {
 
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn fathers_by_patronymic_forms() {
+        // Бэклог р. 2 п. 2: «Васильевъ» и «Иванова» (отец «Иоанн»).
+        let seed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/seed.sqlite");
+        if !seed.exists() {
+            crate::seed_missing("тест отчества младенца пропущен");
+            return;
+        }
+        let conn = Connection::open_with_flags(&seed, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let has = |typed: &str, name: &str| fathers_by_patronymic(&conn, typed).unwrap().contains(&normalize(name));
+        assert!(has("Васильев", "Василий"));
+        assert!(has("Васильевъ", "Василий"), "конечный «ъ» не мешает");
+        assert!(has("Иванова", "Иван"));
+        assert!(has("Иванова", "Иоанн"), "вариант имени по словарю");
+        assert!(has("Иоаннова", "Иван"), "и обратно");
+        assert!(!has("Иванова", "Василий"));
+        assert!(fathers_by_patronymic(&conn, "  ").unwrap().is_empty());
+    }
 
     #[test]
     fn rank_by_years() {

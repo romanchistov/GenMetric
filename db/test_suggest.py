@@ -243,7 +243,8 @@ def main() -> int:
         # терял часть губерний. Держим предел не ниже самого длинного перечня.
         import re as _re
         rust = (DB_DIR.parent / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
-        m = _re.search(r"clamp\(1,\s*(\d+)\)", rust)
+        # С 27.11.2026 у пунктов свой предел (Бэклог р. 3 п. 3): у перечней — ветка else.
+        m = _re.search(r"clamp\(1, if kind == \"place\" \{ \d+ \} else \{ (\d+) \}\)", rust)
         longest = db.execute("SELECT max(n) FROM (SELECT count(*) AS n FROM lookup GROUP BY kind)").fetchone()[0]
         check("предел выдачи в main.rs не меньше самого длинного перечня",
               m is not None and int(m.group(1)) >= longest, f"clamp={m.group(1) if m else '?'}, перечень={longest}")

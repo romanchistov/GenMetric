@@ -1928,7 +1928,9 @@ def incident_20261118_otvet_na_1_0():
     main = strip_comments(read("src-tauri/src/main.rs"))
     check("п. 172: младенец — и по отчеству: имя отца из словаря по набранному отчеству",
           ":fathers" in inf and "json_each(:fathers)" in inf and "patronymic_forms" in blocks
-          and '":fathers": fathers' in main and 'statement("patronymic_forms")' in main)
+          # С 27.11.2026 (Бэклог р. 2 п. 2) поиск — в крейте, records::fathers_by_patronymic.
+          and '":fathers": fathers' in main and "fathers_by_patronymic(" in main
+          and 'statement("patronymic_forms")' in read("src-tauri/core/src/records.rs"))
     check("п. 172: поведение проверено в test_entry",
           "второе слово — отчество: младенец с отцом Никитой находится" in read("db/test_entry.py"))
     build = read(".github/workflows/build.yml")

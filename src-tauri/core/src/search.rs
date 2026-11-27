@@ -1571,6 +1571,43 @@ mod tests {
     /// Подсказка персон: книжные написания одного отчества — один человек
     /// (Роман 20.10.2026, «Ксения Александрова» и «Ксения Александровна»).
     #[test]
+    fn synonyms_join_persons_and_infant() {
+        // Задача 13: «Сильвестр Георгиевич» и «Сильвестр Егорович» одного
+        // пункта — одна персона; Адриан: рождение (отец «Георгиевич») и смерть
+        // (отец «Егорович») — одна. Имена выдуманы; Никита ≠ Аникита.
+        let Some((path, conn)) = fresh("syn") else { return };
+        let sil = |role: &str, patr: &str| person(role, 20, ("Сильвестр", patr, "Белов"), ("Сильвестр", patr), "Лубяны", "крестьянин", "М");
+        let mother = || person("mother", 30, ("Анна", "Петрова", ""), ("Анна", "Петровна"), "Лубяны", "законная жена его", "Ж");
+        let child = |name: &str| person("child", 10, (name, "", ""), (name, ""), "", "", "М");
+        save_entry(&conn, &entry(1, 1913, 1, 2, "1", vec![child("Адриан"), sil("father", "Георгиевич"), mother()])).unwrap();
+        let mut dead = person("deceased", 10, ("Адриан", "", ""), ("Адриан", ""), "Лубяны", "", "М");
+        dead.age_months = Some(3);
+        let mut rel = sil("deceased_relative", "Егорович");
+        rel.sort_order = 40;
+        rel.kinship = Some("отец".into());
+        save_entry(&conn, &entry(3, 1913, 3, 5, "9", vec![dead, rel])).unwrap();
+        save_entry(&conn, &entry(1, 1910, 1, 2, "1", vec![child("Иван"), sil("father", "Егорович"), mother()])).unwrap();
+        save_entry(&conn, &entry(1, 1911, 1, 2, "1", vec![child("Петр"),
+            person("father", 20, ("Никита", "Ильин", "Белов"), ("Никита", "Ильич"), "Лубяны", "", "М"), mother()])).unwrap();
+        save_entry(&conn, &entry(1, 1912, 1, 2, "1", vec![child("Павел"),
+            person("father", 20, ("Аникита", "Ильин", "Белов"), ("Аникита", "Ильич"), "Лубяны", "", "М"), mother()])).unwrap();
+        let hits = |text: &str| -> Vec<(String, usize)> {
+            find(&conn, &Filter { query: text.into(), ..all() }).unwrap().persons.into_iter().map(|p| (p.iof, p.mentions)).collect()
+        };
+        let s: Vec<_> = hits("сильвестр белов").into_iter().filter(|h| h.0.starts_with("Сильвестр ")).collect();
+        assert_eq!(s.len(), 1, "Георгиевич и Егорович — одна персона: {s:?}");
+        assert_eq!(s[0].1, 3, "все три его упоминания");
+        let a = hits("адриан");
+        assert_eq!(a.len(), 1, "рождение и смерть Адриана — одна персона: {a:?}");
+        assert_eq!(a[0].1, 2, "в ней оба упоминания");
+        assert!(s[0].0 == "Сильвестр Георгиевич Белов" || s[0].0 == "Сильвестр Егорович Белов",
+                "на экране — записанное отчество, а не метка группы: {s:?}");
+        assert_eq!(hits("белов ильич").len(), 2, "Никита и Аникита — разные: {:?}", hits("белов ильич"));
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn person_key_folds_patronymic_spellings() {
         let Some((path, conn)) = fresh("pkey") else { return };
         let key = |s: &str| crate::records::person_key(&conn, s, false).unwrap();
@@ -1723,6 +1760,26 @@ mod tests {
             if index.died_of(&row.iof(), Some(&row.place)).is_some() { n += 1; }
         }
         println!("died_of ×2000: {:?}, умерших среди них {n}", started.elapsed());
+        // Задача 13: персоны, склеенные синонимами — записанные имена или
+        // отчества в упоминаниях разные. Список — на просмотр глазами.
+        let raw = |i: usize| {
+            let [f, p, _] = index.rows[i].modern().map(normalize_name);
+            (f, p)
+        };
+        // Только то, что свели синонимы: два упоминания с разным записанным
+        // именем (отчеством), но одним сведённым.
+        let joined: Vec<&Person> = index.persons.iter().filter(|p| p.merged_into.is_none() && {
+            p.rows.iter().any(|&i| p.rows.iter().any(|&j| {
+                let ((fi, pi), (fj, pj)) = (raw(i), raw(j));
+                (fi != fj && index.rows[i].first_n == index.rows[j].first_n)
+                    || (!pi.is_empty() && !pj.is_empty() && pi != pj && index.rows[i].patr_n == index.rows[j].patr_n)
+            }))
+        }).collect();
+        println!("склеено синонимами: {} персон", joined.len());
+        for p in joined.iter().take(60) {
+            let line: Vec<String> = p.rows.iter().map(|&i| format!("{}:{}:{:?}", index.rows[i].role, index.rows[i].iof(), index.rows[i].year)).collect();
+            println!("  син {} | {}", p.place, line.join("; "));
+        }
     }
 
     /// Поиск идёт при наборе: приход в сто тысяч упоминаний не должен

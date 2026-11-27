@@ -307,9 +307,16 @@ export default function PersonBlock({
   function placeBySurname() {
     if (!isNewEntry || noPlace || compact || pickedFromHint.current || placeNow.current.trim()) return;
     const iof = latest.current.iof;
-    const surname = latest.current.parsed?.surname?.trim();
-    if (!surname) return;
-    invoke<string | null>("place_by_surname", { surname })
+    if (!iof.trim()) return;
+    // Разбор — заново, по тексту на момент ухода: при выборе слова из
+    // подсказки поле при уходе обрезает пробел и сбрасывает разбор, а при
+    // быстром Tab разбор отстаёт на букву (ревьюер 27.11.2026, грабли «оба
+    // пути»: слово набрано целиком и выбрано из подсказки).
+    invoke<Parsed>("parse_iof", { text: iof.trim(), nameSurname: nameSurnameNow(latest.current) })
+      .then((parsed) => {
+        const surname = parsed?.surname?.trim();
+        return surname && latest.current.iof === iof ? invoke<string | null>("place_by_surname", { surname }) : null;
+      })
       .then((place) => {
         const now = latest.current;
         if (!place || now.iof !== iof || now.place.trim() || pickedFromHint.current) return;
@@ -489,7 +496,7 @@ export default function PersonBlock({
     <IofField
         label="ИОФ"
         value={person.iof}
-        onChange={(iof, parsed) => { if (!iof.trim()) pickedFromHint.current = false; set({ iof, parsed, note: staleDocNotes(person.note, iof, docFor.current),
+        onChange={(iof, parsed) => { if (!iof.trim() || !sameHuman(latest.current.iof, iof)) pickedFromHint.current = false; set({ iof, parsed, note: staleDocNotes(person.note, iof, docFor.current),
                                          nameSurname: sameHuman(latest.current.iof, iof) && latest.current.nameSurname }); }}
         onResolved={(iof, note) => {
           markDocNotes(iof, note, docFor.current);

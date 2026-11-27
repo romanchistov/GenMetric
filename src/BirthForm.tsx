@@ -1443,7 +1443,7 @@ export default function BirthForm({ mkCase, onSaved, workYear, openReq, onNewYea
                          onPickPerson={(hint) => set((p) => ({ ...p, place: hint.place ?? p.place, rank: hint.rank ?? p.rank }))}
                          titleAfter={i === 0 ? <FoldLink block="birth_kin" onFold={() => foldKin(true)} /> : undefined}
                          before={<>
-                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled only={kinOfBirth}
+                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled only={kinOfBirth(godCount)}
                                     onChange={(kinOf) => set((s) => ({ ...s, kinOf }))} />
                            <Suggest label="Родство" kind="kinship" value={k.kinship} browse skipFilled
                                     onChange={(kinship) => set((s) => ({ ...s, kinship }))} />

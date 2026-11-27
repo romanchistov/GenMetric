@@ -814,7 +814,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
                          onPickPerson={pickInto(set)}
                          titleAfter={i === 0 ? <FoldLink block="marriage_kin" onFold={() => foldKin(true)} /> : undefined}
                          before={<>
-                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled only={kinOfMarriage}
+                           <Suggest label="Чей родств." kind="kin_of" value={k.kinOf} browse skipFilled only={kinOfMarriage(witnessCount)}
                                     onChange={(kinOf) => set((s) => ({ ...s, kinOf }))} />
                            <Suggest label="Родство" kind="kinship" value={k.kinship} browse skipFilled
                                     onChange={(kinship) => set((s) => ({ ...s, kinship }))} />

@@ -46,8 +46,18 @@ export function kinOf(m: KinMention | undefined): Kin {
 /** «Чей родств.» — только роли своего раздела (долг п. 28, Роман
  *  26.11.2026): перечень `kin_of` один на «Рождения» и «Браки». Убираются
  *  лишь чужие роли поставки; своё вписанное остаётся. */
-const BIRTH_ONLY = new Set(["восприемника №1", "восприемника №2", "отца", "матери"]);
+const BIRTH_ONLY = new Set(["восприемника №1", "восприемника №2", "восприемника №3", "восприемника №4", "отца", "матери"]);
 const MARRIAGE_ONLY = new Set(["поручителя №1", "поручителя №2", "поручителя №3", "поручителя №4", "поручителя №5", "поручителя №6", "жениха", "невесты"]);
 const kinKey = (v: string) => v.trim().toLowerCase();
-export const kinOfBirth = (v: string) => !MARRIAGE_ONLY.has(kinKey(v));
-export const kinOfMarriage = (v: string) => !BIRTH_ONLY.has(kinKey(v));
+/** Номер восприемника или поручителя в значении («поручителя №5» → 5). */
+const numberOf = (v: string, who: string) => {
+  const m = new RegExp(`^${who} №(\\d+)$`).exec(kinKey(v));
+  return m ? Number(m[1]) : null;
+};
+/** Номеров — столько, сколько восприемников (поручителей) в форме (Нинель
+ *  27.11.2026, Бэклог р. 3 п. 41: «в рождениях натыкала 4 воспреемника, а в
+ *  списке родственников только 2»). */
+export const kinOfBirth = (gods: number) => (v: string) =>
+  !MARRIAGE_ONLY.has(kinKey(v)) && (numberOf(v, "восприемника") ?? 0) <= gods;
+export const kinOfMarriage = (witnesses: number) => (v: string) =>
+  !BIRTH_ONLY.has(kinKey(v)) && (numberOf(v, "поручителя") ?? 0) <= witnesses;

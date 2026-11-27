@@ -1625,7 +1625,8 @@ def incident_20261015_pamyat_if_i_dovodka():
           "setActive((twins || masked || deadFirst || wordPicked) && !namesFirst ? -1 : 0);" in read("src/IofField.tsx"))
     check("«ИФ» несут и жена по мужу, и отец умершего младенца",
           'statement("person_name_surname")' in main and "AS name_surname" in block("birth_father")
-          and "nameSurname: m.iof ? m.nameSurname : !!wife.name_surname," in read("src/BirthForm.tsx")
+          # С 27.11.2026 (п. 40) выбранная строка «жена …» заменяет и набранную мать.
+          and "nameSurname: chosen || !m.iof ? !!wife.name_surname : m.nameSurname," in read("src/BirthForm.tsx")
           and "nameSurname: !!f.name_surname," in read("src/DeathForm.tsx"))
 
 
@@ -2893,7 +2894,8 @@ def incident_20261126_chej_rodstvennik_chuzhie_roli():
     Защита: подсказка «Чей родств.» в формах получает отбор своего раздела
     (`kinOfBirth`, `kinOfMarriage` в `src/kin.ts`). Стенд — s101.
     """
-    for form, only in (("BirthForm", "kinOfBirth"), ("MarriageForm", "kinOfMarriage")):
+    # С 27.11.2026 (п. 41) отбор знает и число восприемников/поручителей формы.
+    for form, only in (("BirthForm", "kinOfBirth(godCount)"), ("MarriageForm", "kinOfMarriage(witnessCount)")):
         src = strip_comments(read(f"src/{form}.tsx"))
         check(f"{form}: «Чей родств.» — только роли своего раздела",
               f'<Suggest label="Чей родств." kind="kin_of" value={{k.kinOf}} browse skipFilled only={{{only}}}' in src)

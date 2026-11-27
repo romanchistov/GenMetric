@@ -987,7 +987,15 @@ button.danger:disabled { opacity: 0.6; cursor: default; }
 .searchhead .toggle { width: auto; }
 .searchfields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 0.8em; margin-top: 0.3em; }
 /* Пороги — в em колонки (шрифт 15px), прежние были в em окна (16px): те же точки при масштабе 100 %. */
-@container app (min-width: 42.7em) { .searchfields { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+@container app (min-width: 42.7em) {
+  /* Поле НП не уже 16em, подпись «НП» короткая — колонка подписи у него
+     узкая, и подсказка шире самого поля, прижата к его правому краю (Роман
+     26.11.2026, Бэклог р. 3 п. 37: «поле НП очень узкое, подсказки
+     совершенно не видно, хотя слева еще много места»). */
+  .searchfields { grid-template-columns: minmax(0, 1fr) minmax(16em, 0.8fr); }
+  .searchfields > .field:last-child { grid-template-columns: 2.2em 1fr; }
+  .searchfields > .field:last-child .suggest { left: auto; min-width: 20em; }
+}
 .searchopts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 1.2em; margin-top: 0.3em; }
 .searchroles { display: flex; flex-wrap: wrap; gap: 0.2em 1.4em; margin-top: 0.3em; font-size: 0.9rem; }
 .searchroles .rolegroup { display: flex; flex-wrap: wrap; gap: 0.1em 0.9em; }
@@ -1014,10 +1022,12 @@ button.danger:disabled { opacity: 0.6; cursor: default; }
 .searchpersons li.on .sub, .searchpersons li.on .tier { color: #fff; opacity: 0.85; }
 .searchpersons .sub { margin-left: 0.5em; font-size: 0.82rem; color: var(--muted); }
 .searchpersons .tier { flex: none; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
-/* «упоминается в 1885–1903 гг., 12 записей» длиннее прежнего «1885–1903 · 12»
-   (Бэклог р. 3 п. 33): в узком окне фраза уходит под имя, а не съедает его. */
-.searchpersons li { flex-wrap: wrap; }
-.searchpersons .tier { margin-left: auto; }
+/* Строка — обычный текст: не помещается — переносится влево, под имя, и
+   не обрезается многоточием (Роман 26.11.2026, Бэклог р. 3 п. 35: «текст
+   переносится в правую сторону … Надо чтобы текст переносился на левую часть»). */
+.searchpersons li { display: block; }
+.searchpersons .val { white-space: normal; overflow: visible; }
+.searchpersons .tier { margin-left: 0.5em; white-space: normal; }
 
 .dossier h2 .sub { display: inline; margin-left: 0.5em; font-weight: normal; }
 .dossier h3 { margin: 0.5em 0 0.2em; font-size: 0.9rem; color: var(--accent); }

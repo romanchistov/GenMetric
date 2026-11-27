@@ -400,7 +400,7 @@ export default function SearchScreen({ active, request, onOpenEntry, onBack, bac
                       <span className="val">{p.iof}{bornParen(p.born, p.born_about) && <> {bornParen(p.born, p.born_about)}</>}<span className="sub">{[p.place || "без НП", diedMark(p.died),
                         // Женщина — и с девичьей фамилией, и с фамилией мужа (спека, п. 2.3).
                         (p.also ?? []).length ? `также: ${(p.also ?? []).join("; ")}` : ""].filter(Boolean).join(" · ")}</span></span>
-                      <span className="tier">{mentionedLine(p.year_from, p.year_to, p.mentions)}</span>
+                      <span className="tier">· {mentionedLine(p.year_from, p.year_to, p.mentions)}</span>
                     </li>
                   );
                 })}

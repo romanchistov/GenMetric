@@ -2941,6 +2941,30 @@ def incident_20261126_kolesom_sdvigaet_stranicu():
           "const room = window.innerHeight - (box.top + window.scrollY) - below;" in fill)
 
 
+def incident_20261127_sinonimy_imen():
+    """Роман 12.11.2026 (замечание 8) и 26.11.2026 (Бэклог р. 3 п. 36):
+    «Сильвестр Георгиевич» и «Сильвестр Егорович» — две строки «Поиска»;
+    рождение Адриана (отец «Георгиевич») и его смерть (отец «Егорович») — две
+    персоны.
+
+    Защита (задача 13): имя и отчество в ключе персоны и в склейке семьи
+    сводятся к группе синонимов (`search/synonyms.rs`, таблица
+    `db/name_synonyms.csv`), отчество ребёнка — от записанного имени отца.
+    Поведение — тест крейта `synonyms_join_persons_and_infant`, стенд s110.
+    """
+    search = strip_comments(read("src-tauri/core/src/search.rs"))
+    family = strip_comments(read("src-tauri/core/src/search/family.rs"))
+    check("ключ персоны и склейка семьи — со сведёнными синонимами имени и отчества",
+          "syn.first(&first, female), syn.patronymic(&patr)" in search
+          and "syn.patronymic(&normalize_name(p))" in family
+          and "patronymic(dict, &normalize_name(rows[f].modern()[0]), female)" in family)
+    links = read("db/name_synonyms.csv")
+    check("в таблице: Егор → Георгий, без Никита → Аникита и Юрий → Георгий",
+          "М,егор,георгий," in links and "М,никита,аникита," not in links and "М,юрий,георгий," not in links)
+    check("поведение закреплено тестом крейта",
+          "fn synonyms_join_persons_and_infant()" in read("src-tauri/core/src/search.rs"))
+
+
 def incident_20261127_zhena_ne_menyaet_mat():
     """Нинель 27.11.2026 (ответы на 1.0.2, Бэклог р. 3 п. 40): в записи на
     правке выбор отца строкой «жена …» — «Упорно подставляет предыдущую.
@@ -3029,6 +3053,7 @@ def incident_20261126_polosa_uezzhaet():
 
 
 ИНЦИДЕНТЫ = [
+    incident_20261127_sinonimy_imen,
     incident_20261127_zhena_ne_menyaet_mat,
     incident_20261127_chej_rodstv_nomera,
     incident_20261127_poryadok_v_okne_familio,

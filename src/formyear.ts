@@ -7,3 +7,7 @@ import { createContext } from "react";
  * отдаёт свой год: вкладки бывают на разных годах.
  */
 export const FormYear = createContext<number | null>(null);
+
+/** Новая запись (не на правке) — подстановки, что «только в новой записи»,
+ *  блок персоны берёт отсюда (задача 6, НП по фамилии). */
+export const FormNew = createContext(false);

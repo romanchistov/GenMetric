@@ -1,5 +1,5 @@
 import DeleteEntry from "./DeleteEntry";
-import { FormYear } from "./formyear";
+import { FormNew, FormYear } from "./formyear";
 import EntryReqs, { reqsText } from "./EntryReqs";
 import type { Case } from "./CaseHeader";
 import { SAVE_KEY } from "./keys";
@@ -665,6 +665,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
 
   return (
     <FormYear.Provider value={year}>
+    <FormNew.Provider value={editingId === null}>
     <div onKeyDown={hotkeys} ref={root} className="marriage formroot">
       {/* Предохранитель «забытая страница» (Роман 07.10.2026): не останавливает
           набор и пропадает сам, когда страницу сменили. */}
@@ -871,6 +872,7 @@ export default function MarriageForm({ mkCase, onSaved, workYear, openReq, onNew
         </section>
       )}
     </div>
+    </FormNew.Provider>
     </FormYear.Provider>
   );
 }

@@ -682,6 +682,12 @@ fn alias_save(app: State<App>, kind: String, form: String, target: Option<String
     })
 }
 
+/// НП, где фамилия встречалась чаще всего (задача 6) — для человека, набранного с нуля.
+#[tauri::command]
+fn place_by_surname(app: State<App>, surname: String) -> Result<Option<String>, String> {
+    with_conn(&app, "НП по фамилии", |conn| genmetric_core::records::place_by_surname(conn, &surname))
+}
+
 /// Справочник населённых пунктов на «О программе» (задача 9).
 #[tauri::command]
 fn place_directory(app: State<App>) -> Result<Vec<genmetric_core::places::PlaceRow>, String> {
@@ -3246,6 +3252,7 @@ fn main() {
             alias_save,
             alias_list,
             place_directory,
+            place_by_surname,
             alias_remove,
             place_check,
             place_save,

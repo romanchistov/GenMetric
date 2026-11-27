@@ -229,6 +229,50 @@ pub fn fathers_by_patronymic(conn: &Connection, typed: &str) -> Result<Vec<Strin
     Ok(names)
 }
 
+/// Написания фамилии для поиска по памяти персон: мужская и женская формы и
+/// дореформенное «ъ» на конце («Иванова» — «иванов», «иванова», «ивановъ»).
+fn surname_forms(surname: &str) -> Vec<String> {
+    let base = crate::text::normalize_name(surname);
+    if base.is_empty() || base.contains(['%', '_', ' ']) {
+        return Vec::new();
+    }
+    let mut out = vec![base.clone()];
+    let mut add = |v: String| if !v.is_empty() && !out.contains(&v) { out.push(v) };
+    for (fem, masc) in [("ова", "ов"), ("ева", "ев"), ("ёва", "ёв"), ("ина", "ин"), ("ына", "ын")] {
+        if let Some(stem) = base.strip_suffix(fem) {
+            add(format!("{stem}{masc}"));
+        }
+        if let Some(stem) = base.strip_suffix(masc) {
+            add(format!("{stem}{fem}"));
+        }
+    }
+    if let Some(stem) = base.strip_suffix("ая") {
+        add(format!("{stem}ий"));
+        add(format!("{stem}ой"));
+        add(format!("{stem}ый"));
+    }
+    for end in ["ий", "ой", "ый"] {
+        if let Some(stem) = base.strip_suffix(end) {
+            add(format!("{stem}ая"));
+        }
+    }
+    let with_hard: Vec<String> = out.iter().filter(|v| !v.ends_with('а') && !v.ends_with('я')).map(|v| format!("{v}ъ")).collect();
+    out.extend(with_hard);
+    out
+}
+
+/// Пункт, где фамилия встречалась чаще всего (задача 6) — по памяти персон.
+pub fn place_by_surname(conn: &Connection, surname: &str) -> Result<Option<String>, String> {
+    let forms = surname_forms(surname);
+    if forms.is_empty() {
+        return Ok(None);
+    }
+    let json = serde_json::to_string(&forms).map_err(|e| e.to_string())?;
+    conn.query_row(&statement("place_by_surname")?, rusqlite::named_params! { ":forms": json }, |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())
+}
+
 /// Звание матери в записи о рождении — оно же попадает в память персон.
 pub const WIFE_RANK: &str = "законная жена его";
 
@@ -1667,6 +1711,46 @@ mod tests {
 
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn place_by_surname_counts_both_forms() {
+        // Задача 6: «Шишкины» чаще в Шишкино — мужчины и женщины вместе;
+        // «Иван Петров» (отчество) фамилией не считается.
+        let seed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/seed.sqlite");
+        if !seed.exists() {
+            crate::seed_missing("тест НП по фамилии пропущен");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("genmetric-np-surname-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.sqlite");
+        std::fs::copy(&seed, &path).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch("
+            INSERT INTO person_index (iof, iof_norm, place, uses) VALUES
+              ('Иван Петров Шишкин', 'иван петров шишкин', 'Шишкино', 2),
+              ('Анна Иванова Шишкина', 'анна иванова шишкина', 'Шишкино', 2),
+              ('Петр Ильин Шишкинъ', 'петр ильин шишкинъ', 'Бухарино', 3),
+              ('Иван Шишкин', 'иван шишкин', 'Лубяны', 9),
+              ('Мария Шишкина', 'мария шишкина', 'Лубяны', 9);
+            INSERT INTO person_index (iof, iof_norm, place, uses, name_surname) VALUES
+              ('Ольга Попова', 'ольга попова', 'Жары', 1, 1);
+            INSERT INTO person_index (iof, iof_norm, place, uses) VALUES
+              ('Семен Иванов Толстой', 'семен иванов толстой', 'Горелое', 1);
+        ").unwrap();
+        let at = |s: &str| place_by_surname(&conn, s).unwrap();
+        assert_eq!(at("Шишкин").as_deref(), Some("Шишкино"), "мужская и женская формы вместе: 4 против 3");
+        assert_eq!(at("Шишкина").as_deref(), Some("Шишкино"));
+        assert_eq!(at("Шишкинъ").as_deref(), Some("Шишкино"));
+        assert_eq!(at("Попов").as_deref(), Some("Жары"), "«ИФ» — два слова, фамилия");
+        assert_eq!(at("Толстая").as_deref(), Some("Горелое"), "-ая ↔ -ой");
+        assert_eq!(at("Петров"), None, "отчество в старой форме — не фамилия");
+        assert_eq!(at("Неизвестнов"), None);
+        assert_eq!(at(""), None);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn fathers_by_patronymic_forms() {

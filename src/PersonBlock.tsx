@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { FormYear } from "./formyear";
+import { FormNew, FormYear } from "./formyear";
 import { invoke } from "@tauri-apps/api/core";
 import Suggest from "./Suggest";
 import IofField, { type Parsed, type PersonHint } from "./IofField";
@@ -295,6 +295,31 @@ export default function PersonBlock({
   // НП, подставленный формой при уходе из ИОФ (восприемник — НП отца), —
   // выделен, пока курсор в поле НП (Роман 12.11.2026, п. 147).
   const placeToSelect = useRef<string | null>(null);
+  // НП по фамилии (задача 6, Роман 26.10.2026): человек набран с нуля —
+  // не выбран из подсказки, — в новой записи, НП пуст: при уходе из ИОФ в НП
+  // встаёт пункт, где эта фамилия чаще всего, выделенный, чтобы сразу
+  // поправить («фокус не должен перескакивать поле НП»).
+  const isNewEntry = useContext(FormNew);
+  const pickedFromHint = useRef(false);
+  function placeBySurname() {
+    if (!isNewEntry || noPlace || compact || pickedFromHint.current || placeNow.current.trim()) return;
+    const iof = latest.current.iof;
+    const surname = latest.current.parsed?.surname?.trim();
+    if (!surname) return;
+    invoke<string | null>("place_by_surname", { surname })
+      .then((place) => {
+        const now = latest.current;
+        if (!place || now.iof !== iof || now.place.trim() || pickedFromHint.current) return;
+        placeToSelect.current = place;
+        push({ ...now, place });
+        // Курсор уже в НП — выделяем, как только значение встанет.
+        setTimeout(() => {
+          const el = placeRef.current;
+          if (el && document.activeElement === el && el.value === place) el.select();
+        }, 0);
+      })
+      .catch((e) => report("Не удалось подобрать НП по фамилии", e));
+  }
   useEffect(() => {
     const want = placeToSelect.current;
     if (want === null || person.place !== want) return;
@@ -461,8 +486,8 @@ export default function PersonBlock({
     <IofField
         label="ИОФ"
         value={person.iof}
-        onChange={(iof, parsed) => set({ iof, parsed, note: staleDocNotes(person.note, iof, docFor.current),
-                                         nameSurname: sameHuman(latest.current.iof, iof) && latest.current.nameSurname })}
+        onChange={(iof, parsed) => { if (!iof.trim()) pickedFromHint.current = false; set({ iof, parsed, note: staleDocNotes(person.note, iof, docFor.current),
+                                         nameSurname: sameHuman(latest.current.iof, iof) && latest.current.nameSurname }); }}
         onResolved={(iof, note) => {
           markDocNotes(iof, note, docFor.current);
           set({ iof, parsed: null, note: appendNote(person.note, note) });
@@ -474,6 +499,7 @@ export default function PersonBlock({
           // программа помнит (Роман 15.10.2026: «сама автоматически
           // проставлять флажок „ИФ“»); у прежнего человека она своя.
           if (!!latest.current.nameSurname !== !!hint.name_surname) set({ nameSurname: !!hint.name_surname });
+          pickedFromHint.current = true;
           onPickPerson?.(hint);
         }}
         nameSurname={nameSurnameNow(person)}
@@ -484,10 +510,13 @@ export default function PersonBlock({
         preferInfant={preferInfant}
         modernOverride={modernOverride}
         enterToEmpty={enterToEmpty}
-        onLeave={onIofLeave && (() => {
-          const filled = onIofLeave();
+        onLeave={() => {
+          const filled = onIofLeave?.();
           if (typeof filled === "string" && filled && !placeNow.current.trim()) placeToSelect.current = filled;
-        })}
+          // Форма подставила свой НП (восприемник — НП отца) — по фамилии не ищем.
+          if (typeof filled === "string" && filled) return;
+          placeBySurname();
+        }}
         noSurnameMark={compact}
         keepWifeRank={keepWifeRank}
         withWives={withWives}

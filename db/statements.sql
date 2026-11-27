@@ -816,6 +816,23 @@ SELECT trim(m.rank), count(*) FROM person_mention m
    AND m.role_code NOT LIKE 'clergy%' AND m.role_code <> 'deceased_relative'
  GROUP BY trim(m.rank);
 
+-- @place_by_surname
+-- Задача 6 (Роман 26.10.2026): «При вводе персоны с фамилией программа должна
+-- автоматически подставлять в поле „НП“ тот населенный пункт, где эта фамилия
+-- вбивалась чаще всего… только когда персону набирают с нуля». :forms —
+-- JSON-массив написаний фамилии (мужская, женская, с «ъ»), нормализованных.
+-- Фамилия — последнее слово ИОФ из трёх и больше слов или из двух у
+-- сохранённого «именем и фамилией»: иначе «Иван Петров» (отчество в старой
+-- форме) считался бы фамилией «Петров».
+SELECT place FROM person_index
+ WHERE trim(coalesce(place, '')) <> ''
+   AND EXISTS (SELECT 1 FROM json_each(:forms) j
+                WHERE iof_norm LIKE '% % ' || j.value
+                   OR (name_surname = 1 AND iof_norm LIKE '% ' || j.value))
+ GROUP BY place
+ ORDER BY sum(uses) DESC, max(last_used_at) DESC
+ LIMIT 1;
+
 -- @surname_known
 -- Была ли такая фамилия в приходе — для отметки «такой фамилии ещё не было»
 -- (Роман 06.10.2026). Спрашивают сразу обе формы, мужскую и женскую: :a, :b.

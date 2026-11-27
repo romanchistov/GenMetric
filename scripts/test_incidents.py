@@ -2939,6 +2939,39 @@ def incident_20261126_kolesom_sdvigaet_stranicu():
           "const room = window.innerHeight - (box.top + window.scrollY) - below;" in fill)
 
 
+def incident_20261127_zhena_ne_menyaet_mat():
+    """Нинель 27.11.2026 (ответы на 1.0.2, Бэклог р. 3 п. 40): в записи на
+    правке выбор отца строкой «жена …» — «Упорно подставляет предыдущую.
+    Помогает только очистить отца, очистить мать». Жена ставилась только в
+    пустое поле. Роман: «Да, заменять».
+
+    Защита: строка с видимой женой (`hint.wife` без `lone_wife`) заменяет мать
+    и поверх набранной; жена по памяти — только в пустое поле. Стенд s97.
+    """
+    birth = strip_comments(read("src/BirthForm.tsx"))
+    check("строка «жена …» в подсказке отца заменяет набранную мать",
+          "const chosen = !!hint.wife && !hint.lone_wife;" in birth
+          and "iof: chosen ? wife.iof : m.iof || wife.iof," in birth)
+
+
+def incident_20261127_chej_rodstv_nomera():
+    """Нинель 27.11.2026 (Бэклог р. 3 п. 41): «в рождениях натыкала 4
+    воспреемника, а в списке родственников только 2. Или в браках у меня 4
+    поручителя, а в списке родственников аж 6».
+
+    Защита: номера в «Чей родств.» — до числа восприемников/поручителей формы
+    (`kinOfBirth(godCount)`, `kinOfMarriage(witnessCount)`), в поставке есть
+    «восприемника №3», «№4». Стенд s101.
+    """
+    kin = strip_comments(read("src/kin.ts"))
+    check("«Чей родств.»: номера по числу людей формы",
+          '(numberOf(v, "восприемника") ?? 0) <= gods' in kin
+          and '(numberOf(v, "поручителя") ?? 0) <= witnesses' in kin)
+    lookup = read("db/seed/lookup.csv")
+    check("в поставке «восприемника №3» и «№4»",
+          "kin_of,восприемника №3," in lookup and "kin_of,восприемника №4," in lookup)
+
+
 def incident_20261127_poryadok_v_okne_familio():
     """Роман 27.11.2026 (ответы на 1.0.2, Бэклог р. 3 п. 38): «Не вижу в окне
     где написано «Порядок записей: по книге»». Строка порядка стояла только в
@@ -2994,6 +3027,8 @@ def incident_20261126_polosa_uezzhaet():
 
 
 ИНЦИДЕНТЫ = [
+    incident_20261127_zhena_ne_menyaet_mat,
+    incident_20261127_chej_rodstv_nomera,
     incident_20261127_poryadok_v_okne_familio,
     incident_20261126_spravochnik_pereimenovanie,
     incident_20261126_polosa_uezzhaet,

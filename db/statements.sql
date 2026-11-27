@@ -792,12 +792,14 @@ SELECT trim(rank) FROM person_mention
 -- 27.11.2026: вариант А — без настройки; окно ± 1 год — по замеру на копиях
 -- его баз: Горелое 77 % → 82 %, Жары 69 % → 72 %). Нет таких записей —
 -- приходское rank_default.
+-- Записи лет — через индексы (дела → записи → упоминания), а не перебором
+-- всех упоминаний: на Жарах 6,6 → 0,8 мс (ревьюер 27.11.2026).
 SELECT trim(m.rank) FROM person_mention m
-  JOIN entry e ON e.id = m.entry_id JOIN mk_case k ON k.id = e.case_id
- WHERE m.role_code LIKE :role AND m.role_code <> 'deceased_relative'
+ WHERE m.entry_id IN (SELECT e.id FROM mk_case k JOIN entry e ON e.case_id = k.id
+                       WHERE k.year BETWEEN :year - 1 AND :year + 1)
+   AND m.role_code LIKE :role AND m.role_code <> 'deceased_relative'
    AND trim(coalesce(m.rank, '')) <> ''
    AND (:gender IS NULL OR m.gender = :gender)
-   AND k.year BETWEEN :year - 1 AND :year + 1
  GROUP BY trim(m.rank)
  ORDER BY count(*) DESC, max(m.id) DESC
  LIMIT 1;
@@ -805,11 +807,13 @@ SELECT trim(m.rank) FROM person_mention m
 -- @rank_years
 -- Звания пола в записях дел ± 1 год — в подсказке званий они идут первыми,
 -- по частоте в эти годы (задача 12). Причт — свой перечень, не здесь.
+-- Родственник умершего («отец», «муж») — не звание: исключён, как в
+-- rank_default (ревьюер 27.11.2026).
 SELECT trim(m.rank), count(*) FROM person_mention m
-  JOIN entry e ON e.id = m.entry_id JOIN mk_case k ON k.id = e.case_id
- WHERE trim(coalesce(m.rank, '')) <> '' AND m.gender = :gender
-   AND m.role_code NOT LIKE 'clergy%'
-   AND k.year BETWEEN :year - 1 AND :year + 1
+ WHERE m.entry_id IN (SELECT e.id FROM mk_case k JOIN entry e ON e.case_id = k.id
+                       WHERE k.year BETWEEN :year - 1 AND :year + 1)
+   AND trim(coalesce(m.rank, '')) <> '' AND m.gender = :gender
+   AND m.role_code NOT LIKE 'clergy%' AND m.role_code <> 'deceased_relative'
  GROUP BY trim(m.rank);
 
 -- @surname_known
